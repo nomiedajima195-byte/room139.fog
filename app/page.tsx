@@ -8,11 +8,9 @@ export default function Room139FogLocal() {
   const [nodes, setNodes] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   
-  // 揺れているノードのIDを複数管理できるようにSetを使用
   const [shakingIds, setShakingIds] = useState<Set<string>>(new Set());
   const [bubbles, setBubbles] = useState<{ id: number, nodeId: string, x: number, color: string }[]>([]);
   
-  // ダブルタップ判定用の時間記録
   const lastTapTime = useRef<{ [key: string]: number }>({});
 
   useEffect(() => {
@@ -45,42 +43,35 @@ export default function Room139FogLocal() {
     reader.readAsDataURL(file);
   };
 
-  // --- 接触判定（タップ＆ダブルタップ） ---
   const handleInteraction = (nodeId: string) => {
     const now = Date.now();
     const last = lastTapTime.current[nodeId] || 0;
 
     if (now - last < 300) {
-      // 300ms以内ならダブルタップ判定：揺れをトグル
       setShakingIds(prev => {
         const next = new Set(prev);
         if (next.has(nodeId)) next.delete(nodeId);
         else next.add(nodeId);
         return next;
       });
-      lastTapTime.current[nodeId] = 0; // 連続判定を防ぐためリセット
+      lastTapTime.current[nodeId] = 0;
     } else {
-      // シングルタップ：泡を発生させる
       spawnBubble(nodeId);
       lastTapTime.current[nodeId] = now;
     }
   };
 
-  // --- 泡の生成 ---
   const spawnBubble = (nodeId: string) => {
-    // 霧に合う淡い色
     const colors = ['#FFD1DC', '#BFFCC6', '#D5AAFF', '#FFFFD1', '#AFE4FF'];
     const newBubble = {
       id: Date.now() + Math.random(),
       nodeId: nodeId,
-      x: Math.random() * 80 + 10, // 10% ~ 90% の位置
+      x: Math.random() * 80 + 10, 
       color: colors[Math.floor(Math.random() * colors.length)],
     };
 
-    // 最大150個まで保持
     setBubbles(prev => [...prev.slice(-149), newBubble]);
 
-    // 2.5秒後に消滅
     setTimeout(() => {
       setBubbles(prev => prev.filter(b => b.id !== newBubble.id));
     }, 2500);
@@ -94,38 +85,34 @@ export default function Room139FogLocal() {
           background-attachment: fixed;
           margin: 0;
         }
-        /* ゆっくり漂うような揺れ（4秒かけて1.5度だけ傾く） */
-        @keyframes slowShake {
+        /* 4/4拍子を意識したリズム。2秒で1ループ（BPM120の2小節分、あるいはBPM60の1小節分に相当） */
+        @keyframes rhythmShake {
           0%, 100% { transform: rotate(0deg); }
-          25% { transform: rotate(1.5deg); }
-          75% { transform: rotate(-1.5deg); }
+          25% { transform: rotate(2deg); }
+          75% { transform: rotate(-2deg); }
         }
-        /* 泡がフワッと消えながら上へ登る */
         @keyframes bubbleUp {
           0% { transform: translateY(10px) scale(0.5); opacity: 0; }
           15% { opacity: 0.8; }
           100% { transform: translateY(-250px) scale(1.8); opacity: 0; }
         }
-        .animate-slow-shake { animation: slowShake 4s infinite ease-in-out; }
+        .animate-rhythm-shake { animation: rhythmShake 2s infinite ease-in-out; }
         .animate-bubble { animation: bubbleUp 2.5s forwards ease-out; }
       `}</style>
 
-      {/* ヘッダー */}
       <header className="fixed top-6 left-6 z-50 mix-blend-difference pointer-events-none">
         <h1 className="text-white/40 text-[10px] tracking-[0.5em] font-light uppercase">room139.fog</h1>
       </header>
 
-      {/* メイン空間 */}
       <main className="relative z-10 flex flex-col items-center">
         {nodes.map((node) => (
           <div 
             key={node.id} 
             className="relative w-full max-w-[100vw] aspect-square flex items-center justify-center py-2"
           >
-            {/* 揺れるコンテナ */}
-            <div className={`relative w-[95%] h-[95%] transition-transform duration-1000 ${shakingIds.has(node.id) ? 'animate-slow-shake' : ''}`}>
+            {/* アニメーションクラスをリズム仕様に変更 */}
+            <div className={`relative w-[95%] h-[95%] transition-transform duration-500 ${shakingIds.has(node.id) ? 'animate-rhythm-shake' : ''}`}>
               
-              {/* 画像レイヤー（overflow-hiddenはここにだけかける） */}
               <div 
                 className="absolute inset-0 rounded-[12px] shadow-2xl overflow-hidden cursor-pointer"
                 onClick={() => handleInteraction(node.id)}
@@ -137,7 +124,6 @@ export default function Room139FogLocal() {
                 />
               </div>
 
-              {/* 泡レイヤー（画像のはみ出し判定を受けない外側に配置） */}
               <div className="absolute top-0 left-0 right-0 h-0 pointer-events-none z-30">
                 {bubbles.filter(b => b.nodeId === node.id).map(b => (
                   <div
@@ -150,7 +136,6 @@ export default function Room139FogLocal() {
 
             </div>
 
-            {/* 削除ボタン */}
             <button 
               onClick={(e) => { e.stopPropagation(); if(confirm("消去？")) saveToLocal(nodes.filter(n => n.id !== node.id)); }}
               className="absolute top-6 right-6 z-40 text-white/20 hover:text-white/80 p-2 text-xs"
@@ -159,7 +144,6 @@ export default function Room139FogLocal() {
         ))}
       </main>
 
-      {/* 投稿ボタン */}
       <nav className="fixed bottom-10 left-0 right-0 flex flex-col items-center z-50 pointer-events-none">
         <label className="w-16 h-16 flex items-center justify-center cursor-pointer bg-white/90 backdrop-blur rounded-full shadow-2xl border border-white/20 active:scale-90 transition-transform pointer-events-auto">
           <span className="text-2xl font-light text-blue-300">+</span>
