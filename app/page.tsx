@@ -1,33 +1,28 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
-// ローカルストレージのキー（デバイス内に保存されます）
 const STORAGE_KEY = 'room139_fog_local_data';
 
 export default function Room139FogLocal() {
   const [nodes, setNodes] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const [shakingId, setShakingId] = useState<string | null>(null);
+  const [bubbles, setBubbles] = useState<{ id: number, x: number, color: string }[]>([]);
 
-  // 初回読み込み
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      try {
-        setNodes(JSON.parse(saved));
-      } catch (e) {
-        console.error("Data load failed", e);
-      }
+      try { setNodes(JSON.parse(saved)); } catch (e) { console.error(e); }
     }
   }, []);
 
-  // 保存処理
   const saveToLocal = (newNodes: any[]) => {
     setNodes(newNodes);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newNodes));
   };
 
-  // ファイル選択時の処理
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || isUploading) return;
@@ -35,92 +30,131 @@ export default function Room139FogLocal() {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const base64Image = event.target?.result as string;
-      
       const newNode = {
         id: `node-${Date.now()}`,
-        image_url: base64Image,
+        image_url: event.target?.result as string,
         created_at: new Date().toISOString(),
       };
-
-      const updatedNodes = [newNode, ...nodes];
-      saveToLocal(updatedNodes);
+      saveToLocal([newNode, ...nodes]);
       setIsUploading(false);
     };
     reader.readAsDataURL(file);
   };
 
-  const deleteNode = (id: string) => {
-    if (confirm("このノードを霧に返しますか？")) {
-      const updatedNodes = nodes.filter(n => n.id !== id);
-      saveToLocal(updatedNodes);
-    }
+  // --- 外界からの接触: 長押し（揺れ） ---
+  const startPress = (id: string) => {
+    longPressTimer.current = setTimeout(() => {
+      setShakingId(id);
+    }, 1000);
+  };
+
+  const endPress = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    setShakingId(null);
+  };
+
+  // --- 外界からの接触: タップ（泡） ---
+  const spawnBubble = (e: React.MouseEvent | React.TouchEvent) => {
+    const colors = ['#FFD1DC', '#BFFCC6', '#D5AAFF', '#FFFFD1', '#AFE4FF'];
+    const newBubble = {
+      id: Date.now(),
+      x: Math.random() * 80 + 10, // 画像の横幅10%~90%の間から発生
+      color: colors[Math.floor(Math.random() * colors.length)],
+    };
+
+    setBubbles(prev => [...prev.slice(-149), newBubble]); // 最大150個
+
+    // 2秒後に消去（メモリ対策）
+    setTimeout(() => {
+      setBubbles(prev => prev.filter(b => b.id !== newBubble.id));
+    }, 2000);
   };
 
   return (
-    <div className="min-h-screen relative overflow-x-hidden">
+    <div className="min-h-screen relative overflow-x-hidden selection:bg-none">
       <style jsx global>{`
         body {
           background: linear-gradient(125deg, #e0c3fc 0%, #8ec5fc 100%);
           background-attachment: fixed;
           margin: 0;
         }
-        .fog-bg {
-          position: fixed;
-          inset: 0;
-          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-          opacity: 0.05;
-          pointer-events: none;
-          z-index: 1;
+        @keyframes shake {
+          0% { transform: rotate(0deg); }
+          25% { transform: rotate(5deg); }
+          75% { transform: rotate(-5deg); }
+          100% { transform: rotate(0deg); }
         }
+        @keyframes bubbleUp {
+          0% { transform: translateY(0) scale(0.5); opacity: 0; }
+          20% { opacity: 0.8; }
+          100% { transform: translateY(-150px) scale(1.5); opacity: 0; }
+        }
+        .animate-shake { animation: shake 0.2s infinite ease-in-out; }
+        .animate-bubble { animation: bubbleUp 2s forwards ease-out; }
       `}</style>
 
-      <div className="fog-bg" />
-
-      <header className="fixed top-8 left-8 z-50">
-        <h1 className="text-white/60 text-xs tracking-[0.4em] font-light uppercase">
-          room139.fog
-        </h1>
+      {/* ヘッダー */}
+      <header className="fixed top-6 left-6 z-50 mix-blend-difference">
+        <h1 className="text-white/40 text-[10px] tracking-[0.5em] font-light uppercase">room139.fog</h1>
       </header>
 
-      <main className="relative z-10 flex flex-col items-center pt-32 pb-64 space-y-32">
+      {/* メイン：画像間隔を最小化、画面幅いっぱい */}
+      <main className="relative z-10 flex flex-col items-center">
         {nodes.map((node) => (
-          <div key={node.id} className="group relative">
-            <div className="w-[320px] md:w-[400px] aspect-square bg-white/10 backdrop-blur-xl rounded-[12px] border border-white/20 shadow-2xl overflow-hidden transition-transform duration-1000 hover:scale-[1.01]">
+          <div 
+            key={node.id} 
+            className="relative w-full max-w-[100vw] aspect-square flex items-center justify-center overflow-hidden"
+            onMouseDown={() => startPress(node.id)}
+            onMouseUp={endPress}
+            onMouseLeave={endPress}
+            onTouchStart={() => startPress(node.id)}
+            onTouchEnd={endPress}
+            onClick={spawnBubble}
+          >
+            {/* 画像本体：400px制限を解除し、画面幅or最大800px程度に */}
+            <div className={`
+              relative w-[95%] h-[95%] rounded-[12px] overflow-hidden shadow-2xl transition-all duration-700
+              ${shakingId === node.id ? 'animate-shake' : ''}
+            `}>
               <img 
                 src={node.image_url} 
-                alt="node"
-                className="w-full h-full object-cover opacity-90 transition-opacity duration-700 group-hover:opacity-100"
+                className="w-full h-full object-cover opacity-95" 
+                alt="fog node"
               />
+              
+              {/* 泡のレンダリングエリア（画像の上部に重なる） */}
+              <div className="absolute inset-0 pointer-events-none overflow-visible">
+                {bubbles.map(b => (
+                  <div
+                    key={b.id}
+                    className="absolute top-0 animate-bubble w-4 h-4 rounded-full blur-[2px]"
+                    style={{ left: `${b.x}%`, backgroundColor: b.color }}
+                  />
+                ))}
+              </div>
             </div>
+
+            {/* 削除ボタン */}
             <button 
-              onClick={() => deleteNode(node.id)}
-              className="absolute -right-12 top-0 text-white/20 hover:text-white/60 p-2 text-xs"
-            >
-              ✕
-            </button>
+              onClick={(e) => { e.stopPropagation(); if(confirm("消去？")) saveToLocal(nodes.filter(n => n.id !== node.id)); }}
+              className="absolute top-4 right-4 z-20 text-white/20 hover:text-white/80 p-4"
+            >✕</button>
           </div>
         ))}
       </main>
 
-      <nav className="fixed bottom-12 left-0 right-0 flex flex-col items-center z-50">
-        <label className="group relative w-16 h-16 flex items-center justify-center cursor-pointer bg-white rounded-full shadow-xl transition-all hover:scale-110">
-          <span className="text-2xl font-light text-blue-300 transition-transform group-hover:rotate-90">+</span>
-          <input 
-            type="file" 
-            className="hidden" 
-            accept="image/*" 
-            onChange={handleFileChange} 
-          />
+      {/* 投稿ボタン */}
+      <nav className="fixed bottom-10 left-0 right-0 flex flex-col items-center z-50">
+        <label className="w-16 h-16 flex items-center justify-center cursor-pointer bg-white/90 backdrop-blur rounded-full shadow-2xl border border-white/20 active:scale-90 transition-transform">
+          <span className="text-2xl font-light text-blue-300">+</span>
+          <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
         </label>
-        <p className="mt-4 text-[9px] text-white/40 tracking-[0.6em] font-light uppercase">
-          Local Storage Mode
-        </p>
+        <p className="mt-4 text-[8px] text-white/30 tracking-[1em] uppercase">local</p>
       </nav>
 
       {isUploading && (
-        <div className="fixed inset-0 bg-white/40 backdrop-blur-2xl z-[100] flex items-center justify-center text-[10px] tracking-[0.5em] text-blue-400/60 animate-pulse uppercase">
-          Inhaling...
+        <div className="fixed inset-0 bg-white/40 backdrop-blur-3xl z-[100] flex items-center justify-center text-[10px] tracking-[1em] text-blue-400 animate-pulse">
+          INHALING...
         </div>
       )}
     </div>
