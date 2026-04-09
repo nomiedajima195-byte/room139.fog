@@ -1,113 +1,143 @@
-import Image from 'next/image';
+'use client';
 
-export default function Home() {
+import React, { useState, useEffect, useCallback } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+// --- Supabase設定 ---
+const supabaseUrl = 'https://pfxwhcgdbavycddapqmz.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmeHdoY2dkYmF2eWNkZGFwcW16Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcxNjQ0NzUsImV4cCI6MjA4Mjc0MDQ3NX0.YNQlbyocg2olS6-1WxTnbr5N2z52XcVIpI1XR-XrDtM';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+export default function Room139Fog() {
+  const [nodes, setNodes] = useState<any[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // データ取得（気体なのでシンプルに全取得）
+  const fetchData = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('mainline')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (data) setNodes(data);
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // アップロード処理（400pxスクエアの思想）
+  const uploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || isUploading) return;
+    setIsUploading(true);
+
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}.png`;
+    
+    try {
+      // 1. Storage
+      await supabase.storage.from('images').upload(fileName, file);
+      const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(fileName);
+
+      // 2. Database (mainline)
+      await supabase.from('mainline').insert([
+        { id: fileName, image_url: publicUrl, is_public: true }
+      ]);
+
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">app/page.tsx</code>
+    <div className="min-h-screen relative overflow-x-hidden selection:bg-white/30">
+      {/* パステルグラデーション背景
+        ざらついた質感を出すために微細なノイズをオーバーレイ 
+      */}
+      <style jsx global>{`
+        body {
+          background: linear-gradient(125deg, #e0c3fc 0%, #8ec5fc 100%);
+          background-attachment: fixed;
+          margin: 0;
+        }
+        .fog-bg {
+          position: fixed;
+          inset: 0;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3仿真 %3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+          opacity: 0.05;
+          pointer-events: none;
+          z-index: 1;
+        }
+      `}</style>
+
+      <div className="fog-bg" />
+
+      {/* ヘッダー */}
+      <header className="fixed top-8 left-8 z-50">
+        <h1 className="text-white/60 text-xs tracking-[0.4em] font-light uppercase">
+          room139.fog
+        </h1>
+      </header>
+
+      {/* メインコンテンツ：ノードの浮遊空間 */}
+      <main className="relative z-10 flex flex-col items-center pt-32 pb-64 space-y-32">
+        {nodes.map((node) => (
+          <div key={node.id} className="group relative">
+            {/* 400px スクエアノード（12pxラウンド） */}
+            <div className="w-[400px] h-[400px] bg-white/10 backdrop-blur-xl rounded-[12px] border border-white/20 shadow-2xl overflow-hidden transition-transform duration-1000 ease-out hover:scale-[1.02]">
+              <img 
+                src={node.image_url} 
+                alt="node"
+                className="w-full h-full object-cover opacity-90 transition-opacity duration-700 group-hover:opacity-100"
+              />
+              
+              {/* 色彩Fogの痕跡（将来的にここに動的な色を重ねる） */}
+              <div className="absolute inset-0 bg-gradient-to-tr from-orange-400/10 to-blue-400/10 pointer-events-none mix-blend-soft-light" />
+            </div>
+
+            {/* 削除などの最小限の操作（マウスホバー時のみ薄く表示） */}
+            <button 
+              onClick={async () => {
+                if(confirm("消去しますか？")) {
+                  await supabase.from('mainline').delete().eq('id', node.id);
+                  fetchData();
+                }
+              }}
+              className="absolute -right-12 top-0 text-white/20 hover:text-white/60 transition-colors text-xs p-2"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </main>
+
+      {/* 投稿ナビゲーション（ホワイトの〇型ボタン） */}
+      <nav className="fixed bottom-12 left-0 right-0 flex flex-col items-center z-50">
+        <label className="group relative w-16 h-16 flex items-center justify-center cursor-pointer bg-white rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.1)] transition-all duration-300 hover:scale-110 active:scale-95">
+          <span className="text-2xl font-light text-blue-300 transition-transform group-hover:rotate-90">+</span>
+          <input 
+            type="file" 
+            className="hidden" 
+            accept="image/*" 
+            onChange={uploadFile} 
+          />
+        </label>
+        <p className="mt-4 text-[9px] text-white/40 tracking-[0.6em] font-light uppercase">
+          Rubbish
         </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{' '}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
+      </nav>
+
+      {/* アーカイブ中のオーバーレイ */}
+      {isUploading && (
+        <div className="fixed inset-0 bg-white/40 backdrop-blur-2xl z-[100] flex items-center justify-center">
+          <p className="text-[10px] tracking-[0.5em] text-blue-400/60 animate-pulse uppercase">
+            Dissolving into fog...
+          </p>
         </div>
-      </div>
-
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 before:lg:h-[360px] z-[-1]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Docs{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Learn{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Templates{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Explore the Next.js 13 playground.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Deploy{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
+      )}
+    </div>
   );
 }
