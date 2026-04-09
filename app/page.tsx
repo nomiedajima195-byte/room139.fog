@@ -8,6 +8,7 @@ export default function Room139FogLocal() {
   const [nodes, setNodes] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   
+  // 揺れているノードを管理
   const [shakingIds, setShakingIds] = useState<Set<string>>(new Set());
   const [bubbles, setBubbles] = useState<{ id: number, nodeId: string, x: number, color: string }[]>([]);
   
@@ -48,17 +49,23 @@ export default function Room139FogLocal() {
     const last = lastTapTime.current[nodeId] || 0;
 
     if (now - last < 300) {
-      setShakingIds(prev => {
-        const next = new Set(prev);
-        if (next.has(nodeId)) next.delete(nodeId);
-        else next.add(nodeId);
-        return next;
-      });
+      // ダブルタップ：揺れを開始（既存の揺れがあればリセットして再開）
+      setShakingIds(prev => new Set(prev).add(nodeId));
       lastTapTime.current[nodeId] = 0;
     } else {
+      // シングルタップ：泡
       spawnBubble(nodeId);
       lastTapTime.current[nodeId] = now;
     }
+  };
+
+  // アニメーション終了時にフラグを落とす
+  const stopShaking = (nodeId: string) => {
+    setShakingIds(prev => {
+      const next = new Set(prev);
+      next.delete(nodeId);
+      return next;
+    });
   };
 
   const spawnBubble = (nodeId: string) => {
@@ -85,7 +92,7 @@ export default function Room139FogLocal() {
           background-attachment: fixed;
           margin: 0;
         }
-        /* 4/4拍子を意識したリズム。2秒で1ループ（BPM120の2小節分、あるいはBPM60の1小節分に相当） */
+        /* 1往復2秒 × 3回 = 6秒で終了 */
         @keyframes rhythmShake {
           0%, 100% { transform: rotate(0deg); }
           25% { transform: rotate(2deg); }
@@ -96,12 +103,16 @@ export default function Room139FogLocal() {
           15% { opacity: 0.8; }
           100% { transform: translateY(-250px) scale(1.8); opacity: 0; }
         }
-        .animate-rhythm-shake { animation: rhythmShake 2s infinite ease-in-out; }
+        .animate-rhythm-shake-3 { 
+          animation: rhythmShake 2s ease-in-out; 
+          animation-iteration-count: 3; 
+        }
         .animate-bubble { animation: bubbleUp 2.5s forwards ease-out; }
       `}</style>
 
+      {/* ヘッダー：Rubbish のみ */}
       <header className="fixed top-6 left-6 z-50 mix-blend-difference pointer-events-none">
-        <h1 className="text-white/40 text-[10px] tracking-[0.5em] font-light uppercase">room139.fog</h1>
+        <h1 className="text-white/40 text-[10px] tracking-[0.5em] font-light uppercase">Rubbish</h1>
       </header>
 
       <main className="relative z-10 flex flex-col items-center">
@@ -110,8 +121,11 @@ export default function Room139FogLocal() {
             key={node.id} 
             className="relative w-full max-w-[100vw] aspect-square flex items-center justify-center py-2"
           >
-            {/* アニメーションクラスをリズム仕様に変更 */}
-            <div className={`relative w-[95%] h-[95%] transition-transform duration-500 ${shakingIds.has(node.id) ? 'animate-rhythm-shake' : ''}`}>
+            {/* onAnimationEnd で揺れの状態をリセット */}
+            <div 
+              className={`relative w-[95%] h-[95%] transition-transform duration-500 ${shakingIds.has(node.id) ? 'animate-rhythm-shake-3' : ''}`}
+              onAnimationEnd={() => stopShaking(node.id)}
+            >
               
               <div 
                 className="absolute inset-0 rounded-[12px] shadow-2xl overflow-hidden cursor-pointer"
