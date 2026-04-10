@@ -84,7 +84,6 @@ export default function Room139Fog90s() {
     <div className="min-h-screen relative overflow-x-hidden selection:bg-none font-sans text-xs">
       <style jsx global>{`
         body {
-          /* グラデーションなし、ベタ塗りの薄紫 */
           background-color: #b19cd9;
           margin: 0;
           color: black;
@@ -106,20 +105,17 @@ export default function Room139Fog90s() {
         .animate-bubble-pixel { 
           animation: bubbleUp 2.5s forwards ease-out; 
         }
-        /* OS標準のベベル（立体感） */
         .bevel-3d {
           box-shadow: inset 1px 1px 0 white, inset -1px -1px 0 #808080;
         }
         .bevel-3d-inset {
           box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 white;
         }
-        /* 強いピクセルシャドー */
         .shadow-hard {
-          box-shadow: 4px 4px 0 #000000;
+          box-shadow: 4px 4px 0 rgba(0,0,0,0.8);
         }
-        /* 鼠色のコントロールパーツ */
         .control-90s {
-          @apply bevel-3d bg-[#c0c0c0] active:bevel-3d-inset;
+          @apply bevel-3d bg-[#d1d1d1] active:bevel-3d-inset;
         }
       `}</style>
 
@@ -127,12 +123,15 @@ export default function Room139Fog90s() {
       <header className="fixed top-0 left-0 right-0 z-50 pointer-events-none p-2">
         <div className="flex items-center justify-between h-7 bg-[#000080] px-2 pointer-events-auto shadow-hard">
           <div className="flex items-center text-white font-bold">
-            <div className="w-3 h-3 bg-white/30 mr-2 border border-white/50" />
+            <div className="w-3 h-3 bg-white/20 mr-2 flex items-center justify-center">
+              <div className="w-1 h-1 bg-white" />
+            </div>
+            {/* ここを room139.fog に戻しました */}
             <h1 className="text-[10px] tracking-widest uppercase">room139.fog</h1>
           </div>
           <div className="flex space-x-1">
-            <div className="w-4 h-4 control-90s flex items-center justify-center text-[8px] font-bold">_</div>
-            <div className="w-4 h-4 control-90s flex items-center justify-center text-[8px] font-bold">✕</div>
+            <div className="w-4 h-4 control-90s flex items-center justify-center text-[8px]">_</div>
+            <div className="w-4 h-4 control-90s flex items-center justify-center text-[8px]">✕</div>
           </div>
         </div>
       </header>
@@ -144,12 +143,11 @@ export default function Room139Fog90s() {
             className="relative w-full max-w-[100vw] aspect-square flex items-center justify-center"
           >
             <div 
-              className={`relative w-[90%] h-[90%] transition-transform duration-500 ${shakingIds.has(node.id) ? 'animate-slow-shake-3' : ''}`}
+              className={`relative w-[92%] h-[92%] transition-transform duration-500 ${shakingIds.has(node.id) ? 'animate-slow-shake-3' : ''}`}
               onAnimationEnd={() => stopShaking(node.id)}
             >
-              {/* 画像ウィンドウ：鼠色ベタ */}
               <div 
-                className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard cursor-pointer control-90s"
+                className="absolute inset-0 bg-[#d1d1d1] p-1 shadow-hard cursor-pointer control-90s"
                 onClick={() => handleInteraction(node.id)}
               >
                 <img 
@@ -160,7 +158,6 @@ export default function Room139Fog90s() {
                 />
               </div>
 
-              {/* 泡 */}
               <div className="absolute top-0 left-0 right-0 h-0 pointer-events-none z-30">
                 {bubbles.filter(b => b.nodeId === node.id).map(b => (
                   <div
@@ -172,7 +169,6 @@ export default function Room139Fog90s() {
               </div>
             </div>
 
-            {/* 削除ボタン */}
             <button 
               onClick={(e) => { e.stopPropagation(); if(confirm("消去？")) saveToLocal(nodes.filter(n => n.id !== node.id)); }}
               className="absolute top-0 right-4 z-40 w-6 h-6 control-90s shadow-hard flex items-center justify-center text-black active:shadow-none translate-y-[-50%]"
@@ -181,10 +177,9 @@ export default function Room139Fog90s() {
         ))}
       </main>
 
-      {/* 投稿ボタン：鼠色ベタ塗り + 強いシャドー */}
       <nav className="fixed bottom-12 left-0 right-0 flex flex-col items-center z-50 pointer-events-none">
         <label className="group relative w-32 h-10 flex items-center justify-center cursor-pointer control-90s shadow-hard pointer-events-auto active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
-          <span className="text-2xl font-bold text-[#000080]">＋</span>
+          <span className="text-2xl font-light text-[#000080]">＋</span>
           <input 
             type="file" 
             className="hidden" 
@@ -192,15 +187,14 @@ export default function Room139Fog90s() {
             onChange={handleFileChange} 
           />
         </label>
-        <p className="mt-4 text-[8px] text-black/40 tracking-[0.5em] uppercase font-bold">Local File System</p>
+        <p className="mt-4 text-[8px] text-black/30 tracking-[0.5em] uppercase font-bold">Local Syncing...</p>
       </nav>
 
-      {/* ローディング */}
       {isUploading && (
-        <div className="fixed inset-0 bg-white/20 backdrop-blur-sm z-[100] flex items-center justify-center">
-          <div className="bg-[#c0c0c0] p-4 shadow-hard control-90s">
-            <p className="text-[10px] tracking-[0.2em] text-[#000080] animate-pulse font-bold">
-              EXECUTING UPLOAD...
+        <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-[100] flex items-center justify-center">
+          <div className="bg-[#d1d1d1] p-4 shadow-hard control-90s">
+            <p className="text-[10px] tracking-[0.2em] text-[#000080] animate-pulse">
+              INHALING...
             </p>
           </div>
         </div>
