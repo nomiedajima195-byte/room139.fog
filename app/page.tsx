@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const STORAGE_KEY = 'room139_fog_local_data';
 
-export default function Room139FogLocal() {
+export default function Room139Fog90s() {
   const [nodes, setNodes] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   
@@ -49,7 +49,7 @@ export default function Room139FogLocal() {
     const last = lastTapTime.current[nodeId] || 0;
 
     if (now - last < 300) {
-      // ダブルタップ：揺れを開始（既存の揺れがあればリセットして再開）
+      // ダブルタップ：揺れを開始
       setShakingIds(prev => new Set(prev).add(nodeId));
       lastTapTime.current[nodeId] = 0;
     } else {
@@ -59,7 +59,6 @@ export default function Room139FogLocal() {
     }
   };
 
-  // アニメーション終了時にフラグを落とす
   const stopShaking = (nodeId: string) => {
     setShakingIds(prev => {
       const next = new Set(prev);
@@ -84,65 +83,108 @@ export default function Room139FogLocal() {
     }, 2500);
   };
 
+  // Windows 95 タイトルバーのアイコン
+  const WindowsIcon = () => (
+    <div className="w-4 h-4 mr-1.5 flex items-center justify-center">
+      <div className="w-1 h-1 bg-black" />
+      <div className="w-1 h-1 bg-black ml-0.5" />
+      <div className="w-1 h-1 bg-black ml-0.5" />
+      <div className="w-1 h-1 bg-black ml-0.5" />
+    </div>
+  );
+
   return (
-    <div className="min-h-screen relative overflow-x-hidden selection:bg-none">
+    <div className="min-h-screen relative overflow-x-hidden selection:bg-none font-sans text-xs">
       <style jsx global>{`
         body {
-          background: linear-gradient(125deg, #e0c3fc 0%, #8ec5fc 100%);
-          background-attachment: fixed;
+          /* 背景：青空と雲 (image_0.png の背景をそのまま使用) */
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3仿真 %3Crect width='100%25' height='100%25' fill='%2363b4f6'/%3E%3Crect x='30' y='50' width='30' height='20' rx='10' fill='white' opacity='0.7'/%3E%3Crect x='70' y='120' width='20' height='10' rx='5' fill='white' opacity='0.5'/%3E%3Crect x='130' y='30' width='40' height='25' rx='12' fill='white' opacity='0.8'/%3E%3C/svg%3E");
+          background-size: 200px 200px; /* 繰り返しのピクセルアート背景 */
           margin: 0;
+          color: black;
         }
-        /* 1往復2秒 × 3回 = 6秒で終了 */
-        @keyframes rhythmShake {
+        /* ゆっくり漂うような揺れ */
+        @keyframes slowShake {
           0%, 100% { transform: rotate(0deg); }
-          25% { transform: rotate(2deg); }
-          75% { transform: rotate(-2deg); }
+          25% { transform: rotate(1.5deg); }
+          75% { transform: rotate(-1.5deg); }
         }
+        /* 泡がフワッと消えながら上へ登る (ピクセルアートの泡) */
         @keyframes bubbleUp {
           0% { transform: translateY(10px) scale(0.5); opacity: 0; }
           15% { opacity: 0.8; }
-          100% { transform: translateY(-250px) scale(1.8); opacity: 0; }
+          100% { transform: translateY(-200px) scale(1.8); opacity: 0; }
         }
-        .animate-rhythm-shake-3 { 
-          animation: rhythmShake 2s ease-in-out; 
+        /* 3往復で止まるアニメーション */
+        .animate-slow-shake-3 { 
+          animation: slowShake 2s ease-in-out; 
           animation-iteration-count: 3; 
         }
-        .animate-bubble { animation: bubbleUp 2.5s forwards ease-out; }
+        .animate-bubble-pixel { 
+          animation: bubbleUp 2.5s forwards ease-out; 
+        }
+        /* Windows 95 スタイルの3Dベベル効果 */
+        .bevel-3d {
+          box-shadow: inset 1px 1px 0 white, inset -1px -1px 0 #808080, 2px 2px 0 black;
+        }
+        /* 逆のベベル効果（ボタンが押された時など） */
+        .bevel-3d-inset {
+          box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 white;
+        }
+        /* カクカクの四角いボタン */
+        .button-90s {
+          @apply bevel-3d bg-[#c0c0c0] active:bevel-3d-inset;
+        }
       `}</style>
 
-      {/* ヘッダー：Rubbish のみ */}
-      <header className="fixed top-6 left-6 z-50 mix-blend-difference pointer-events-none">
-        <h1 className="text-white/40 text-[10px] tracking-[0.5em] font-light uppercase">Rubbish</h1>
+      {/* ヘッダー：ドットの room139.fog を Windows 95 タイトルバーに */}
+      <header className="fixed top-0 left-0 right-0 z-50 pointer-events-none">
+        <div className="flex items-center justify-between h-7 bg-[#000080] bevel-3d-inset px-2 pointer-events-auto">
+          <div className="flex items-center text-white font-bold">
+            <WindowsIcon />
+            {/* ドットの room139.fog (Microsoft Sans Serif の小さなドットフォントを模倣) */}
+            <h1 style={{ fontFamily: 'MS PGothic, Microsoft Sans Serif, Arial' }} className="text-[10px] tracking-tight">room139.fog</h1>
+          </div>
+          <div className="flex space-x-0.5">
+            <button className="w-5 h-5 bevel-3d-inset bg-[#c0c0c0] flex items-center justify-center active:bevel-3d text-black font-bold text-xs">-</button>
+            <button className="w-5 h-5 bevel-3d-inset bg-[#c0c0c0] flex items-center justify-center active:bevel-3d text-black font-bold text-xs">✕</button>
+          </div>
+        </div>
       </header>
 
-      <main className="relative z-10 flex flex-col items-center">
+      {/* メイン空間 */}
+      <main className="relative z-10 flex flex-col items-center pt-20 pb-64 space-y-16">
         {nodes.map((node) => (
           <div 
             key={node.id} 
             className="relative w-full max-w-[100vw] aspect-square flex items-center justify-center py-2"
           >
-            {/* onAnimationEnd で揺れの状態をリセット */}
+            {/* 揺れるコンテナ (3往復・自動停止) */}
             <div 
-              className={`relative w-[95%] h-[95%] transition-transform duration-500 ${shakingIds.has(node.id) ? 'animate-rhythm-shake-3' : ''}`}
+              className={`relative w-[95%] h-[95%] transition-transform duration-500 ${shakingIds.has(node.id) ? 'animate-slow-shake-3' : ''}`}
               onAnimationEnd={() => stopShaking(node.id)}
             >
               
+              {/* 画像レイヤー（Windows 95 メディアプレーヤーを模倣） */}
               <div 
-                className="absolute inset-0 rounded-[12px] shadow-2xl overflow-hidden cursor-pointer"
+                className="absolute inset-0 rounded-[2px] bg-[#c0c0c0] p-1 shadow-2xl overflow-hidden cursor-pointer bevel-3d"
                 onClick={() => handleInteraction(node.id)}
               >
+                {/* 画像本体 */}
                 <img 
                   src={node.image_url} 
                   className="w-full h-full object-cover opacity-95 transition-opacity duration-700 hover:opacity-100" 
                   alt="fog node"
+                  style={{ imageRendering: 'pixelated' }} /* ピクセルアート風のレンダリング */
                 />
               </div>
 
+              {/* 泡レイヤー (ピクセルアートの泡) */}
               <div className="absolute top-0 left-0 right-0 h-0 pointer-events-none z-30">
                 {bubbles.filter(b => b.nodeId === node.id).map(b => (
                   <div
                     key={b.id}
-                    className="absolute animate-bubble w-10 h-10 rounded-full blur-[6px] mix-blend-screen"
+                    className="absolute animate-bubble-pixel w-6 h-6 rounded-full blur-[2px] mix-blend-screen"
                     style={{ left: `${b.x}%`, backgroundColor: b.color }}
                   />
                 ))}
@@ -150,25 +192,36 @@ export default function Room139FogLocal() {
 
             </div>
 
+            {/* 削除ボタン（Windows 95 の小さなウィンドウ閉じるボタン） */}
             <button 
               onClick={(e) => { e.stopPropagation(); if(confirm("消去？")) saveToLocal(nodes.filter(n => n.id !== node.id)); }}
-              className="absolute top-6 right-6 z-40 text-white/20 hover:text-white/80 p-2 text-xs"
+              className="absolute top-2 right-2 z-40 w-5 h-5 bevel-3d-inset bg-[#c0c0c0] flex items-center justify-center text-black font-bold text-xs active:bevel-3d"
             >✕</button>
           </div>
         ))}
       </main>
 
+      {/* 投稿ナビゲーション (カクカクの四角い投稿ボタン) */}
       <nav className="fixed bottom-10 left-0 right-0 flex flex-col items-center z-50 pointer-events-none">
-        <label className="w-16 h-16 flex items-center justify-center cursor-pointer bg-white/90 backdrop-blur rounded-full shadow-2xl border border-white/20 active:scale-90 transition-transform pointer-events-auto">
-          <span className="text-2xl font-light text-blue-300">+</span>
-          <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+        <label className="group relative w-16 h-16 flex items-center justify-center cursor-pointer button-90s rounded-none transition-all duration-300 pointer-events-auto">
+          {/* クラシックな「＋」を真ん中に */}
+          <span className="text-3xl font-light text-[#000080] transition-transform group-hover:rotate-90">＋</span>
+          <input 
+            type="file" 
+            className="hidden" 
+            accept="image/*" 
+            onChange={handleFileChange} 
+          />
         </label>
-        <p className="mt-4 text-[8px] text-white/30 tracking-[1em] uppercase">local</p>
+        <p style={{ fontFamily: 'MS PGothic, Microsoft Sans Serif, Arial' }} className="mt-4 text-[8px] text-white/40 tracking-[0.6em] font-light uppercase">local 199x</p>
       </nav>
 
+      {/* アーカイブ中のオーバーレイ */}
       {isUploading && (
-        <div className="fixed inset-0 bg-white/40 backdrop-blur-3xl z-[100] flex items-center justify-center text-[10px] tracking-[1em] text-blue-400 animate-pulse uppercase">
-          Inhaling...
+        <div className="fixed inset-0 bg-white/40 backdrop-blur-2xl z-[100] flex items-center justify-center">
+          <p style={{ fontFamily: 'MS PGothic, Microsoft Sans Serif, Arial' }} className="text-[10px] tracking-[0.5em] text-[#000080] animate-pulse uppercase">
+            Inhaling into local fog...
+          </p>
         </div>
       )}
     </div>
