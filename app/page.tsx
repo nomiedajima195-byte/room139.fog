@@ -68,7 +68,8 @@ export default function Room139Fog90s() {
   };
 
   const spawnBubble = (nodeId: string) => {
-    const colors = ['#FFD1DC', '#BFFCC6', '#D5AAFF', '#FFFFD1', '#AFE4FF'];
+    // 泡の色をサイバーポップに調整（紫、ピンク、水色、黄色）
+    const colors = ['#f830f8', '#00e0ff', '#ffe000', '#f8f830', '#f83030'];
     const newBubble = {
       id: Date.now() + Math.random(),
       nodeId: nodeId,
@@ -97,9 +98,12 @@ export default function Room139Fog90s() {
     <div className="min-h-screen relative overflow-x-hidden selection:bg-none font-sans text-xs">
       <style jsx global>{`
         body {
-          /* 背景：青空と雲 (image_0.png の背景をそのまま使用) */
-          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3仿真 %3Crect width='100%25' height='100%25' fill='%2363b4f6'/%3E%3Crect x='30' y='50' width='30' height='20' rx='10' fill='white' opacity='0.7'/%3E%3Crect x='70' y='120' width='20' height='10' rx='5' fill='white' opacity='0.5'/%3E%3Crect x='130' y='30' width='40' height='25' rx='12' fill='white' opacity='0.8'/%3E%3C/svg%3E");
-          background-size: 200px 200px; /* 繰り返しのピクセルアート背景 */
+          /* 背景：紫のグリッド背景 (image_4.png の背景をそのまま使用) */
+          background-color: #3f00f8;
+          background-image: 
+            linear-gradient(#f8f830 1px, transparent 1px), 
+            linear-gradient(90deg, #f8f830 1px, transparent 1px);
+          background-size: 20px 20px; /* グリッドのサイズ */
           margin: 0;
           color: black;
         }
@@ -125,21 +129,25 @@ export default function Room139Fog90s() {
         }
         /* Windows 95 スタイルの3Dベベル効果 */
         .bevel-3d {
-          box-shadow: inset 1px 1px 0 white, inset -1px -1px 0 #808080, 2px 2px 0 black;
+          box-shadow: inset 1px 1px 0 white, inset -1px -1px 0 #808080;
         }
         /* 逆のベベル効果（ボタンが押された時など） */
         .bevel-3d-inset {
           box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 white;
         }
-        /* カクカクの四角いボタン */
-        .button-90s {
+        /* image_4.png スタイルのピクセル化された強いドロップシャドウ */
+        .shadow-pixel-90s {
+          box-shadow: 6px 6px 0 #000000; /* image_4.png のように、右下に黒いドットで構成されるシャドー */
+        }
+        /* カクカクの四角いコントロール (image_4.png スタイル) */
+        .control-90s {
           @apply bevel-3d bg-[#c0c0c0] active:bevel-3d-inset;
         }
       `}</style>
 
       {/* ヘッダー：ドットの room139.fog を Windows 95 タイトルバーに */}
       <header className="fixed top-0 left-0 right-0 z-50 pointer-events-none">
-        <div className="flex items-center justify-between h-7 bg-[#000080] bevel-3d-inset px-2 pointer-events-auto">
+        <div className="flex items-center justify-between h-7 bg-[#000080] bevel-3d-inset px-2 pointer-events-auto shadow-pixel-90s">
           <div className="flex items-center text-white font-bold">
             <WindowsIcon />
             {/* ドットの room139.fog (Microsoft Sans Serif の小さなドットフォントを模倣) */}
@@ -165,15 +173,15 @@ export default function Room139Fog90s() {
               onAnimationEnd={() => stopShaking(node.id)}
             >
               
-              {/* 画像レイヤー（Windows 95 メディアプレーヤーを模倣） */}
+              {/* 画像レイヤー（レトロなウィンドウ風） */}
               <div 
-                className="absolute inset-0 rounded-[2px] bg-[#c0c0c0] p-1 shadow-2xl overflow-hidden cursor-pointer bevel-3d"
+                className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-pixel-90s overflow-hidden cursor-pointer control-90s rounded-[2px]"
                 onClick={() => handleInteraction(node.id)}
               >
                 {/* 画像本体 */}
                 <img 
                   src={node.image_url} 
-                  className="w-full h-full object-cover opacity-95 transition-opacity duration-700 hover:opacity-100" 
+                  className="w-full h-full object-cover opacity-95 transition-opacity duration-700 hover:opacity-100 rounded-[2px]" 
                   alt="fog node"
                   style={{ imageRendering: 'pixelated' }} /* ピクセルアート風のレンダリング */
                 />
@@ -201,11 +209,11 @@ export default function Room139Fog90s() {
         ))}
       </main>
 
-      {/* 投稿ナビゲーション (カクカクの四角い投稿ボタン) */}
+      {/* 投稿ナビゲーション (image_4.png スタイルの、シャドー付き横長コントロール投稿ボタン) */}
       <nav className="fixed bottom-10 left-0 right-0 flex flex-col items-center z-50 pointer-events-none">
-        <label className="group relative w-16 h-16 flex items-center justify-center cursor-pointer button-90s rounded-none transition-all duration-300 pointer-events-auto">
+        <label className="group relative w-24 h-8 flex items-center justify-center cursor-pointer control-90s rounded-[2px] shadow-pixel-90s transition-all duration-300 active:bevel-3d-inset pointer-events-auto">
           {/* クラシックな「＋」を真ん中に */}
-          <span className="text-3xl font-light text-[#000080] transition-transform group-hover:rotate-90">＋</span>
+          <span className="text-2xl font-light text-[#000080] transition-transform group-hover:rotate-90">＋</span>
           <input 
             type="file" 
             className="hidden" 
