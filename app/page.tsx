@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-const STORAGE_KEY = 'room139_fog_glyph_mohu';
+const STORAGE_KEY = 'room139_fog_cooldown_mohu';
 
 type Node = {
   id: string;
@@ -11,31 +11,21 @@ type Node = {
   interaction_count: number;
 };
 
-type ViewMode = {
-  FEED: 'FEED';
-  MY_PAGE: 'MY_PAGE';
-};
-
-const ViewModes: ViewMode = {
+const ViewModes = {
   FEED: 'FEED',
   MY_PAGE: 'MY_PAGE',
-};
+} as const;
 
 export default function Room139Fog90s() {
-  // --- 状態管理 ---
-  const [viewMode, setViewMode] = useState<keyof ViewMode>(ViewModes.FEED);
+  const [viewMode, setViewMode] = useState<keyof typeof ViewModes>('FEED');
   const [nodes, setNodes] = useState<Node[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [shakingIds, setShakingIds] = useState<Set<string>>(new Set());
-  // 絵文字を浮かせるための状態
   const [floatingEmojis, setFloatingEmojis] = useState<{ id: number, nodeId: string, x: number, delay: number, glyph: string, color: string }[]>([]);
   
-  const [user] = useState({
-    name: 'kurata.fog',
-    icon: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
-  });
+  // クールダウン管理用のState (nodeId を保存)
+  const [cooldowns, setCooldowns] = useState<Set<string>>(new Set());
 
-  // --- ライフサイクル・保存 ---
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -48,12 +38,64 @@ export default function Room139Fog90s() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newNodes));
   };
 
-  // --- アクション ---
+  // --- [1] 猫を押してカウントを貯める ---
+  const handleAddCount = (nodeId: string) => {
+    const updatedNodes = nodes.map(n => 
+      n.id === nodeId ? { ...n, interaction_count: (n.interaction_count || 0) + 1 } : n
+    );
+    saveToLocal(updatedNodes);
+
+    // 存在確認として少しだけ画像を揺らす
+    setShakingIds(prev => new Set(prev).add(nodeId));
+    setTimeout(() => setShakingIds(prev => {
+      const next = new Set(prev);
+      next.delete(nodeId);
+      return next;
+    }), 500);
+  };
+
+  // --- [2] MOHUボタンで貯まったカウント分を浮かせる ---
+  const handleTriggerMOHU = (nodeId: string, count: number) => {
+    // クールダウン中なら何もしない
+    if (cooldowns.has(nodeId) || count <= 0) return;
+
+    // クールダウン開始
+    setCooldowns(prev => new Set(prev).add(nodeId));
+
+    // アニメーション用絵文字生成
+    const emojis = ['🐈', '🐾', '🐈‍⬛'];
+    const colors = ['#ffffff', '#000000bb', '#808080'];
+    const newEmojis = Array.from({ length: Math.min(count, 30) }).map((_, i) => ({
+      id: Math.random(),
+      nodeId: nodeId,
+      x: (i * 15) % 100,
+      delay: i * 0.1,
+      glyph: emojis[i % emojis.length],
+      color: colors[i % colors.length],
+    }));
+
+    setFloatingEmojis(prev => [...prev.slice(-200), ...newEmojis]);
+
+    // 3秒後にクールダウン解除
+    setTimeout(() => {
+      setCooldowns(prev => {
+        const next = new Set(prev);
+        next.delete(nodeId);
+        return next;
+      });
+    }, 3000);
+
+    // アニメーション終了後に要素を削除
+    setTimeout(() => {
+      const ids = new Set(newEmojis.map(e => e.id));
+      setFloatingEmojis(prev => prev.filter(e => !ids.has(e.id)));
+    }, 3000);
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || isUploading) return;
     setIsUploading(true);
-
     const reader = new FileReader();
     reader.onload = (event) => {
       const newNode: Node = {
@@ -68,73 +110,26 @@ export default function Room139Fog90s() {
     reader.readAsDataURL(file);
   };
 
-  const handleMOHU = (nodeId: string, count: number) => {
-    // 接触を表現する絵文字リスト（猫に関連するもの）
-    const emojis = ['🐈', '🐾', '🐈‍⬛'];
-    
-    // パーティクルの色（モノクロUIに馴染ませる）
-    const colors = ['#ffffff', '#000000bb', '#808080'];
-
-    const newEmojis = Array.from({ length: Math.min(count + 4, 20) }).map((_, i) => ({
-      id: Math.random(),
-      nodeId: nodeId,
-      x: (i * 12) % 100, // 横に並んで通り過ぎるように
-      delay: i * 0.08,  // 時間差でスッとなでる
-      glyph: emojis[i % emojis.length], // 絵文字をローテーション
-      color: colors[i % colors.length], // 色をローテーション
-    }));
-
-    setFloatingEmojis(prev => [...prev.slice(-150), ...newEmojis]);
-    
-    // 画像を少し揺らす（存在確認）
-    setShakingIds(prev => new Set(prev).add(nodeId));
-    setTimeout(() => setShakingIds(prev => { const n = new Set(prev); n.delete(nodeId); return n; }), 2000);
-
-    setTimeout(() => {
-      const ids = new Set(newEmojis.map(e => e.id));
-      setFloatingEmojis(prev => prev.filter(e => !ids.has(e.id)));
-    }, 2500);
-  };
-
-  const deleteNode = (id: string) => {
-    if (confirm("このノードを霧に返しますか？")) {
-      saveToLocal(nodes.filter(n => n.id !== id));
-    }
-  };
-
   return (
     <div className="h-[100dvh] w-full relative overflow-hidden flex flex-col bg-[#b19cd9]">
       <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet" />
       
       <style jsx global>{`
-        * {
-          font-family: 'DotGothic16', sans-serif !important;
-          -webkit-font-smoothing: none !important;
-          text-rendering: pixelated !important;
-        }
-
-        /* 現代のカラフルな絵文字を90年代のモノクロビットマップ風に強制変換する魔法のCSS */
-        .pixel-glyph {
-          filter: grayscale(100%) brightness(0.2) contrast(1.5);
-          image-rendering: pixelated; /* スマホブラウザでの補完をオフ */
-          transform-origin: center;
-        }
-
+        * { font-family: 'DotGothic16', sans-serif !important; -webkit-font-smoothing: none !important; }
+        .pixel-glyph { filter: grayscale(100%) brightness(0.2) contrast(1.5); image-rendering: pixelated; }
+        
         @keyframes rhythmShake {
           0%, 100% { transform: rotate(0deg); }
           50% { transform: rotate(1.5deg); }
         }
-        
-        /* 絵文字が脚をなでていく軌道（左から右へ、少しうねりながら昇る） */
         @keyframes glyphSwipe {
-          0% { transform: translate(-40px, 0) scale(1) rotate(-5deg); opacity: 0; }
+          0% { transform: translate(-40px, 0) scale(1); opacity: 0; }
           20% { opacity: 1; }
-          50% { transform: translate(20px, -140px) scale(1.6) rotate(5deg); }
-          100% { transform: translate(70px, -320px) scale(0.6) rotate(-10deg); opacity: 0; }
+          50% { transform: translate(20px, -150px) scale(1.8); }
+          100% { transform: translate(80px, -350px) scale(0.5); opacity: 0; }
         }
-
-        .animate-slow-shake { animation: rhythmShake 2s ease-in-out 1; }
-        .animate-glyph-swipe { animation: glyphSwipe 1.8s forwards ease-out; }
+        .animate-slow-shake { animation: rhythmShake 0.5s ease-in-out infinite; }
+        .animate-glyph-swipe { animation: glyphSwipe 2s forwards ease-out; }
         
         .bevel-3d { box-shadow: inset 1px 1px 0 white, inset -1px -1px 0 #808080; }
         .bevel-3d-inset { box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 white; }
@@ -143,111 +138,90 @@ export default function Room139Fog90s() {
         .win-titlebar { @apply bg-[#000080] text-white font-bold flex items-center justify-between px-2; }
       `}</style>
 
-      {/* ヘッダー */}
       <header className="shrink-0 z-50 h-8 win-titlebar m-1 shadow-hard">
         <div className="flex items-center space-x-2">
           <div className="w-3 h-3 border border-white/50 bg-white/20" />
-          <h1 className="text-[12px] tracking-tighter uppercase cursor-pointer" onClick={() => setViewMode(ViewModes.FEED)}>
-            room139.fog {viewMode === ViewModes.MY_PAGE && ' - PROFILE'}
-          </h1>
-        </div>
-        <div className="flex space-x-1">
-          <div className="w-4 h-4 control-90s flex items-center justify-center text-[10px]">_</div>
-          <div className="w-4 h-4 control-90s flex items-center justify-center text-[10px]">✕</div>
+          <h1 className="text-[12px] uppercase">room139.fog</h1>
         </div>
       </header>
 
-      {/* メインエリア */}
       <main className="flex-1 overflow-y-auto p-4 space-y-20 pb-40">
-        
-        {viewMode === ViewModes.MY_PAGE ? (
-          /* --- マイページ --- */
-          <div className="w-full max-w-[400px] mx-auto space-y-6">
-            <div className="control-90s p-4 shadow-hard flex flex-col items-center">
-              <div className="w-20 h-20 bevel-3d-inset p-1 bg-white mb-4">
-                <img src={user.icon} alt="icon" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
-              </div>
-              <h2 className="text-[18px] text-[#000080] font-bold">{user.name}</h2>
-              <button className="mt-4 px-6 h-10 control-90s shadow-hard text-[14px] font-bold active:translate-x-0.5 active:translate-y-0.5 active:shadow-none uppercase tracking-widest">
-                Check
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              {nodes.map((node) => (
-                <div key={node.id} className="control-90s p-1 shadow-hard aspect-square">
-                  <img src={node.image_url} className="w-full h-full object-cover opacity-60" style={{ imageRendering: 'pixelated' }} />
+        {viewMode === 'MY_PAGE' ? (
+          <div className="w-full max-w-[400px] mx-auto space-y-6 pt-4">
+             {/* マイページ表示ロジックは統合済み */}
+             <div className="control-90s p-4 shadow-hard flex flex-col items-center">
+                <div className="w-20 h-20 bevel-3d-inset p-1 bg-white mb-4">
+                   <div className="w-full h-full bg-[#c0c0c0] flex items-center justify-center text-[20px] pixel-glyph">👤</div>
                 </div>
-              ))}
-            </div>
+                <h2 className="text-[18px] text-[#000080] font-bold">kurata.fog</h2>
+             </div>
+             <div className="grid grid-cols-2 gap-4">
+                {nodes.map(n => (
+                  <div key={n.id} className="control-90s p-1 shadow-hard aspect-square">
+                    <img src={n.image_url} className="w-full h-full object-cover opacity-50" style={{ imageRendering: 'pixelated' }} />
+                  </div>
+                ))}
+             </div>
           </div>
         ) : (
-          /* --- フィード --- */
           <div className="flex flex-col items-center space-y-20">
             {nodes.map((node) => (
               <div key={node.id} className="relative w-full flex flex-col items-center">
                 <div className={`relative w-full max-w-[320px] aspect-square transition-transform ${shakingIds.has(node.id) ? 'animate-slow-shake' : ''}`}>
-                  <div className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard control-90s overflow-hidden rounded-[2px]">
-                    <img src={node.image_url} className="w-full h-full object-cover rounded-[2px]" alt="" style={{ imageRendering: 'pixelated' }} />
+                  <div className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard control-90s">
+                    <img src={node.image_url} className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                   </div>
                   
-                  {/* ボタンエリア */}
-                  <div className="absolute -bottom-12 left-0 flex space-x-2 z-40">
-                    <button onClick={() => handleMOHU(node.id, node.interaction_count || 0)} className="w-12 h-12 control-90s shadow-hard flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all">
-                      {/* 猫嫌いによる無関心な猫絵文字：モノクロ変換 */}
-                      <span className="text-[22px] pixel-glyph">🐈‍⬛</span>
-                    </button>
+                  <div className="absolute -bottom-14 left-0 flex items-end space-x-2 z-40">
+                    {/* 左：カウントアップボタン */}
+                    <div className="flex flex-col items-center">
+                      <span className="text-[10px] text-[#000080] font-bold mb-1 bg-white px-1 shadow-sm">{node.interaction_count || 0}</span>
+                      <button 
+                        onClick={() => handleAddCount(node.id)} 
+                        className="w-12 h-12 control-90s shadow-hard flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
+                      >
+                        <span className="text-[22px] pixel-glyph">🐈</span>
+                      </button>
+                    </div>
                     
+                    {/* 右：MOHU解放ボタン（3秒クールダウン） */}
                     <button 
-                      onClick={() => handleMOHU(node.id, node.interaction_count || 0)} 
-                      className="relative px-6 h-12 control-90s shadow-hard font-bold text-[14px] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none uppercase tracking-widest"
+                      onClick={() => handleTriggerMOHU(node.id, node.interaction_count || 0)} 
+                      disabled={cooldowns.has(node.id)}
+                      className={`relative px-6 h-12 shadow-hard font-bold text-[14px] uppercase tracking-widest transition-all
+                        ${cooldowns.has(node.id) 
+                          ? 'bevel-3d-inset bg-[#d0d0d0] text-gray-500 translate-x-0.5 translate-y-0.5 shadow-none cursor-not-allowed' 
+                          : 'control-90s active:translate-x-0.5 active:translate-y-0.5 active:shadow-none'}`}
                     >
-                      Mohu
-                      {/* すり寄り体験：ボタンの内部から絵文字が通り過ぎる */}
-                      <div className="absolute top-0 left-0 w-full h-0 pointer-events-none z-30">
+                      {cooldowns.has(node.id) ? 'Wait...' : 'Mohu'}
+
+                      {/* 絵文字アニメーション */}
+                      <div className="absolute top-0 left-0 w-full h-0 pointer-events-none">
                         {floatingEmojis.filter(e => e.nodeId === node.id).map(e => (
-                          <div 
-                            key={e.id} 
-                            className="absolute animate-glyph-swipe flex items-center justify-center" 
-                            style={{ 
-                              left: `${e.x}%`, 
-                              animationDelay: `${e.delay}s`,
-                            }} 
-                          >
-                            {/* 浮かび上がる絵文字：モノクロ変換 */}
-                            <span className="text-[20px] pixel-glyph blur-[0.5px]" style={{ color: e.color }}>
-                              {e.glyph}
-                            </span>
+                          <div key={e.id} className="absolute animate-glyph-swipe" style={{ left: `${e.x}%`, animationDelay: `${e.delay}s` }}>
+                            <span className="text-[20px] pixel-glyph" style={{ color: e.color }}>{e.glyph}</span>
                           </div>
                         ))}
                       </div>
                     </button>
                   </div>
-                  <button onClick={() => deleteNode(node.id)} className="absolute top-2 right-2 w-6 h-6 control-90s flex items-center justify-center text-[12px] font-bold">✕</button>
+
+                  <button onClick={() => saveToLocal(nodes.filter(n => n.id !== node.id))} className="absolute -top-2 -right-2 w-6 h-6 control-90s flex items-center justify-center text-[10px] font-bold">✕</button>
                 </div>
               </div>
             ))}
-            {nodes.length === 0 && <p className="text-[12px] text-black/50 tracking-widest mt-20 uppercase font-bold">No Fog Data</p>}
           </div>
         )}
       </main>
 
-      {/* フッター */}
-      <footer className="shrink-0 z-50 h-28 bg-[#c0c0c0] bevel-3d-inset shadow-[0_-4px_0_#000000] flex items-center justify-around p-2">
-        <button onClick={() => setViewMode(ViewModes.FEED)} className={`w-16 h-12 control-90s shadow-hard font-bold text-[10px] ${viewMode === ViewModes.FEED ? 'bevel-3d-inset bg-[#e0e0e0]' : ''}`}>FEED</button>
-        <label className="w-32 h-12 control-90s shadow-hard flex items-center justify-center cursor-pointer active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
-          <span className="text-[14px] font-bold text-[#000080] tracking-tighter">＋ picture</span>
+      <footer className="shrink-0 z-50 h-24 bg-[#c0c0c0] bevel-3d-inset shadow-[0_-4px_0_#000000] flex items-center justify-around p-2">
+        <button onClick={() => setViewMode('FEED')} className={`w-20 h-10 control-90s shadow-hard font-bold text-[10px] ${viewMode === 'FEED' ? 'bevel-3d-inset' : ''}`}>FEED</button>
+        <label className="w-20 h-10 control-90s shadow-hard flex items-center justify-center cursor-pointer active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
+          <span className="text-[12px] font-bold text-[#000080]">＋ picture</span>
           <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
         </label>
-        <button onClick={() => setViewMode(ViewModes.MY_PAGE)} className={`w-16 h-12 control-90s shadow-hard font-bold text-[10px] ${viewMode === ViewModes.MY_PAGE ? 'bevel-3d-inset bg-[#e0e0e0]' : ''}`}>MY_PAGE</button>
+        <button onClick={() => setViewMode('MY_PAGE')} className={`w-20 h-10 control-90s shadow-hard font-bold text-[10px] ${viewMode === 'MY_PAGE' ? 'bevel-3d-inset' : ''}`}>MY_PAGE</button>
       </footer>
-
-      {isUploading && (
-        <div className="fixed inset-0 bg-white/20 backdrop-blur-sm z-[100] flex items-center justify-center">
-          <div className="bg-[#c0c0c0] p-4 shadow-hard control-90s">
-            <p className="text-[10px] tracking-[0.2em] text-[#000080] animate-pulse font-bold">INHALING PICTURE...</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
