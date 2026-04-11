@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-const STORAGE_KEY = 'room139_fog_non_quantified';
+const STORAGE_KEY = 'room139_fog_pixel_mohu_v3';
 
 type Node = {
   id: string;
@@ -11,12 +11,46 @@ type Node = {
   interaction_count: number;
 };
 
+// --- [自作] 90sビットマップ風ドット猫（SVG） ---
+
+// [●ボタン用] 座っている猫の後ろ姿（無関心）
+const PixelCatBackIcon = () => (
+  <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
+    <rect x="9" y="11" width="8" height="11" fill="black" fillOpacity="0.7"/> {/* 体 */}
+    <rect x="10" y="9" width="2" height="2" fill="black" fillOpacity="0.7"/> {/* 耳 */}
+    <rect x="14" y="9" width="2" height="2" fill="black" fillOpacity="0.7"/> {/* 耳 */}
+    <rect x="17" y="13" width="2" height="7" fill="black" fillOpacity="0.7"/> {/* 尻尾 */}
+  </svg>
+);
+
+// [浮かび上がる用] シンプルな猫のシルエット（モノクロ）
+const PixelCatFloatIcon = ({ color }: { color: string }) => (
+  <svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
+    <rect x="9" y="10" width="12" height="12" fill={color}/> {/* 体 */}
+    <rect x="10" y="7" width="3" height="3" fill={color}/> {/* 耳 */}
+    <rect x="17" y="7" width="3" height="3" fill={color}/> {/* 耳 */}
+    <rect x="21" y="13" width="3" height="9" fill={color}/> {/* 尻尾 */}
+    <rect x="12" y="13" width="2" height="2" fill="black" fillOpacity="0.3"/> {/* 目（薄く） */}
+    <rect x="16" y="13" width="2" height="2" fill="black" fillOpacity="0.3"/> {/* 目（薄く） */}
+  </svg>
+);
+
+// [マイページ用] ドット風シルエットアイコン
+const PixelUserIcon = () => (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
+        <rect x="11" y="7" width="10" height="10" fill="#000080" fillOpacity="0.8"/> {/* 頭 */}
+        <rect x="7" y="17" width="18" height="8" fill="#000080" fillOpacity="0.8"/> {/* 体 */}
+    </svg>
+);
+
+
 export default function Room139Fog90s() {
   const [viewMode, setViewMode] = useState<'FEED' | 'MY_PAGE'>('FEED');
   const [nodes, setNodes] = useState<Node[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [shakingIds, setShakingIds] = useState<Set<string>>(new Set());
-  const [floatingEmojis, setFloatingEmojis] = useState<{ id: number, nodeId: string, x: number, delay: number, glyph: string, color: string }[]>([]);
+  // 浮かぶ猫を管理
+  const [floatingCats, setFloatingCats] = useState<{ id: number, nodeId: string, x: number, delay: number, color: string }[]>([]);
   const [cooldowns, setCooldowns] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -31,14 +65,12 @@ export default function Room139Fog90s() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newNodes));
   };
 
-  // --- [1] 猫を押す（数値は見えないが、内部で気配が溜まる） ---
   const handleAddCount = (nodeId: string) => {
     const updatedNodes = nodes.map(n => 
       n.id === nodeId ? { ...n, interaction_count: (n.interaction_count || 0) + 1 } : n
     );
     saveToLocal(updatedNodes);
 
-    // わずかに画像が揺れる（すり寄られた感触）
     setShakingIds(prev => new Set(prev).add(nodeId));
     setTimeout(() => setShakingIds(prev => {
       const next = new Set(prev);
@@ -47,30 +79,25 @@ export default function Room139Fog90s() {
     }), 400);
   };
 
-  // --- [2] MOHUボタン（溜まった気配を一気に解放する儀式） ---
   const handleTriggerMOHU = (nodeId: string, count: number) => {
     if (cooldowns.has(nodeId)) return;
 
     setCooldowns(prev => new Set(prev).add(nodeId));
 
-    const emojis = ['🐈', '🐾', '🐈‍⬛'];
-    const colors = ['#ffffff', '#000000bb', '#808080'];
-    
-    // 放出する猫の数。溜まっていなくても1匹は出るように。
-    const releaseCount = count > 0 ? Math.min(count, 40) : 1;
+    // モノクロの気配（白、薄グレイ、濃グレイ）
+    const colors = ['#ffffffdd', '#c0c0c0cc', '#808080aa'];
+    const releaseCount = count > 0 ? Math.min(count, 35) : 1;
 
-    const newEmojis = Array.from({ length: releaseCount }).map((_, i) => ({
+    const newCats = Array.from({ length: releaseCount }).map((_, i) => ({
       id: Math.random(),
       nodeId: nodeId,
       x: Math.random() * 80 + 10,
-      delay: i * 0.08,
-      glyph: emojis[i % emojis.length],
+      delay: i * 0.09,
       color: colors[i % colors.length],
     }));
 
-    setFloatingEmojis(prev => [...prev.slice(-200), ...newEmojis]);
+    setFloatingCats(prev => [...prev.slice(-200), ...newCats]);
 
-    // 3秒の沈黙
     setTimeout(() => {
       setCooldowns(prev => {
         const next = new Set(prev);
@@ -80,11 +107,10 @@ export default function Room139Fog90s() {
     }, 3000);
 
     setTimeout(() => {
-      const ids = new Set(newEmojis.map(e => e.id));
-      setFloatingEmojis(prev => prev.filter(e => !ids.has(e.id)));
+      const ids = new Set(newCats.map(c => c.id));
+      setFloatingCats(prev => prev.filter(c => !ids.has(c.id)));
     }, 3000);
 
-    // 解放したのでカウントをリセット（任意ですが、空にする方が「出し切った感」が出ます）
     const resetNodes = nodes.map(n => n.id === nodeId ? { ...n, interaction_count: 0 } : n);
     saveToLocal(resetNodes);
   };
@@ -113,20 +139,22 @@ export default function Room139Fog90s() {
       
       <style jsx global>{`
         * { font-family: 'DotGothic16', sans-serif !important; -webkit-font-smoothing: none !important; }
-        .pixel-glyph { filter: grayscale(100%) brightness(0.1) contrast(1.2); image-rendering: pixelated; }
         
+        /* 自作SVG画像もパキパキに表示 */
+        svg { image-rendering: pixelated; }
+
         @keyframes rhythmShake {
           0%, 100% { transform: rotate(0deg); }
           50% { transform: rotate(1deg); }
         }
-        @keyframes glyphSwipe {
+        @keyframes catSwipe {
           0% { transform: translate(-30px, 0) scale(0.8); opacity: 0; }
           20% { opacity: 1; }
-          50% { transform: translate(10px, -180px) scale(1.5); }
-          100% { transform: translate(40px, -400px) scale(0.4); opacity: 0; }
+          50% { transform: translate(10px, -180px) scale(1.6); }
+          100% { transform: translate(40px, -420px) scale(0.4); opacity: 0; }
         }
         .animate-slow-shake { animation: rhythmShake 0.4s ease-in-out 1; }
-        .animate-glyph-swipe { animation: glyphSwipe 2s forwards ease-out; }
+        .animate-cat-swipe { animation: catSwipe 2s forwards ease-out; }
         
         .bevel-3d { box-shadow: inset 1px 1px 0 white, inset -1px -1px 0 #808080; }
         .bevel-3d-inset { box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 white; }
@@ -144,14 +172,16 @@ export default function Room139Fog90s() {
           <div className="w-full max-w-[400px] mx-auto space-y-6 pt-4">
              <div className="control-90s p-4 shadow-hard flex flex-col items-center">
                 <div className="w-20 h-20 bevel-3d-inset p-1 bg-white mb-2">
-                   <div className="w-full h-full bg-[#c0c0c0] flex items-center justify-center text-[24px] pixel-glyph">👤</div>
+                   <div className="w-full h-full bg-[#c0c0c0] flex items-center justify-center">
+                       <PixelUserIcon /> {/* 自作アイコン */}
+                   </div>
                 </div>
                 <h2 className="text-[16px] text-[#000080] font-bold">kurata.fog</h2>
              </div>
              <div className="grid grid-cols-2 gap-4">
                 {nodes.map(n => (
                   <div key={n.id} className="control-90s p-1 shadow-hard aspect-square">
-                    <img src={n.image_url} className="w-full h-full object-cover grayscale opacity-40" style={{ imageRendering: 'pixelated' }} />
+                    <img src={n.image_url} className="w-full h-full object-covergrayscale grayscale opacity-40" style={{ imageRendering: 'pixelated' }} />
                   </div>
                 ))}
              </div>
@@ -161,20 +191,20 @@ export default function Room139Fog90s() {
             {nodes.map((node) => (
               <div key={node.id} className="relative w-full flex flex-col items-center">
                 <div className={`relative w-full max-w-[320px] aspect-square ${shakingIds.has(node.id) ? 'animate-slow-shake' : ''}`}>
-                  <div className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard control-90s">
-                    <img src={node.image_url} className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+                  <div className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard control-90srounded-[2px]">
+                    <img src={node.image_url} className="w-full h-full object-coverrounded-[2px]" style={{ imageRendering: 'pixelated' }} />
                   </div>
                   
                   <div className="absolute -bottom-12 left-0 flex space-x-2 z-40">
-                    {/* 数値のない猫ボタン */}
+                    {/* [自作猫ボタン] 数値なし、媚びない後ろ姿 */}
                     <button 
                       onClick={() => handleAddCount(node.id)} 
-                      className="w-12 h-12 control-90s shadow-hard flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
+                      className="w-12 h-12 control-90s shadow-hard flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all"
                     >
-                      <span className="text-[22px] pixel-glyph">🐈</span>
+                      <PixelCatBackIcon />
                     </button>
                     
-                    {/* MOHUボタン（沈黙の3秒） */}
+                    {/* MOHUボタン */}
                     <button 
                       onClick={() => handleTriggerMOHU(node.id, node.interaction_count || 0)} 
                       disabled={cooldowns.has(node.id)}
@@ -185,16 +215,18 @@ export default function Room139Fog90s() {
                     >
                       {cooldowns.has(node.id) ? '....' : 'Mohu'}
 
-                      <div className="absolute top-0 left-0 w-full h-0 pointer-events-none">
-                        {floatingEmojis.filter(e => e.nodeId === node.id).map(e => (
-                          <div key={e.id} className="absolute animate-glyph-swipe" style={{ left: `${e.x}%`, animationDelay: `${e.delay}s` }}>
-                            <span className="text-[20px] pixel-glyph" style={{ color: e.color }}>{e.glyph}</span>
+                      {/* [自作ドット猫] 解放アニメーション */}
+                      <div className="absolute top-0 left-0 w-full h-0 pointer-events-none z-30">
+                        {floatingCats.filter(c => c.nodeId === node.id).map(c => (
+                          <div key={c.id} className="absolute animate-cat-swipe flex items-center justify-center" style={{ left: `${c.x}%`, animationDelay: `${c.delay}s` }}>
+                            {/* モノクロのドットシルエット */}
+                            <PixelCatFloatIcon color={c.color} />
                           </div>
                         ))}
                       </div>
                     </button>
                   </div>
-                  <button onClick={() => saveToLocal(nodes.filter(n => n.id !== node.id))} className="absolute -top-1 -right-1 w-6 h-6 control-90s flex items-center justify-center text-[10px] font-bold">✕</button>
+                  <button onClick={() => saveToLocal(nodes.filter(n => n.id !== node.id))} className="absolute -top-1 -right-1 w-6 h-6 control-90s flex items-center justify-center text-[10px] font-bold active:translate-x-0.5 active:translate-y-0.5active:shadow-none transition-all">✕</button>
                 </div>
               </div>
             ))}
