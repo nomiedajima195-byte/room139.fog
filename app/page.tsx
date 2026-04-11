@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-const STORAGE_KEY = 'room139_fog_asymmetric_v1';
+const STORAGE_KEY = 'room139_fog_silent_tracks_v1';
 
 type Node = {
   id: string;
@@ -39,7 +39,6 @@ export default function Room139Fog90s() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newNodes));
   };
 
-  // --- [1] FEED: 🐱ボタンのみ（痕跡を貯める） ---
   const handleAddTrack = (nodeId: string) => {
     const updatedNodes = nodes.map(n => 
       n.id === nodeId ? { ...n, interaction_count: (n.interaction_count || 0) + 1 } : n
@@ -55,18 +54,18 @@ export default function Room139Fog90s() {
     }, 300);
   };
 
-  // --- [2] MY_PAGE: 🐾ボタン（貯まった痕跡を自分のページで解放） ---
   const handleTriggerTracks = (nodeId: string, count: number) => {
     if (cooldowns.has(nodeId) || count === 0) return;
     setCooldowns(prev => new Set(prev).add(nodeId));
 
-    const releaseCount = Math.min(count, 50); // 最大50個まで
+    // 数値は出さないが、カウント数に応じて放出量を決定（最大50）
+    const releaseCount = Math.min(count, 50);
     const colors = ['#ffffffcc', '#c0c0c0aa', '#80808088'];
 
     const newTracks = Array.from({ length: releaseCount }).map((_, i) => ({
       id: Math.random(),
       nodeId: nodeId,
-      x: Math.random() * 80 + 10,
+      x: Math.random() * 70 + 15,
       delay: i * 0.1,
       color: colors[i % colors.length],
     }));
@@ -75,14 +74,13 @@ export default function Room139Fog90s() {
 
     setTimeout(() => {
       setCooldowns(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
-    }, 3000);
+    }, 3500);
 
     setTimeout(() => {
       const ids = new Set(newTracks.map(t => t.id));
       setFloatingTracks(prev => prev.filter(t => !ids.has(t.id)));
-    }, 3000);
+    }, 3500);
 
-    // 確認したのでカウントリセット
     const resetNodes = nodes.map(n => n.id === nodeId ? { ...n, interaction_count: 0 } : n);
     saveToLocal(resetNodes);
   };
@@ -123,7 +121,6 @@ export default function Room139Fog90s() {
         .pixel-glyph-black-silhouette {
           filter: brightness(0) contrast(1.5);
           image-rendering: pixelated;
-          opacity: 0.9;
         }
 
         .pixel-glyph-gray-archive {
@@ -137,12 +134,12 @@ export default function Room139Fog90s() {
           50% { transform: scale(1.01); }
         }
         @keyframes tracksPath {
-          0% { transform: translateY(0) scale(0.5); opacity: 0; }
-          15% { opacity: 0.8; }
-          100% { transform: translateY(-350px) scale(2.5); opacity: 0; }
+          0% { transform: translateY(0) scale(0.4); opacity: 0; }
+          10% { opacity: 0.8; }
+          100% { transform: translateY(-380px) scale(2.8); opacity: 0; }
         }
         .animate-subtle-shake { animation: rhythmShake 0.3s ease-in-out 1; }
-        .animate-tracks-path { animation: tracksPath 2.5s forwards ease-out; }
+        .animate-tracks-path { animation: tracksPath 2.8s forwards ease-out; }
         
         .bevel-3d { box-shadow: inset 1px 1px 0 white, inset -1px -1px 0 #808080; }
         .bevel-3d-inset { box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 white; }
@@ -157,7 +154,6 @@ export default function Room139Fog90s() {
 
       <main className="flex-1 overflow-y-auto p-4 pb-48">
         {viewMode === 'MY_PAGE' ? (
-          /* --- MY_PAGE: 原色表示 + 2列 + 🐾ボタン --- */
           <div className="w-full max-w-[500px] mx-auto space-y-8 pt-4">
              <div className="control-90s p-4 shadow-hard flex flex-col items-center">
                 <div className="w-16 h-16 bevel-3d-inset p-1 bg-white mb-2">
@@ -168,35 +164,34 @@ export default function Room139Fog90s() {
                 <h2 className="text-[14px] text-[#000080] font-bold uppercase tracking-widest">kurata.fog</h2>
              </div>
 
-             <div className="grid grid-cols-2 gap-x-4 gap-y-12">
+             <div className="grid grid-cols-2 gap-x-4 gap-y-16"> {/* 縦の間隔を広げてボタンを配置しやすく */}
                 {nodes.map(n => (
-                  <div key={n.id} className="relative flex flex-col items-center">
+                  <div key={n.id} className="relative flex flex-col items-center mb-4">
                     <div className="w-full aspect-square control-90s p-1 shadow-hard">
-                      {/* 画像は原色（フィルターなし） */}
                       <img src={n.image_url} className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                     </div>
 
-                    {/* マイページ限定：足跡解放ボタン */}
-                    <div className="absolute -bottom-6 left-0 w-full flex justify-start pl-1">
+                    {/* マイページ：🐾ボタンを画像からさらに下に配置 */}
+                    <div className="mt-4 w-full flex justify-center">
                         <button 
                             onClick={() => handleTriggerTracks(n.id, n.interaction_count || 0)} 
                             disabled={cooldowns.has(n.id) || n.interaction_count === 0}
-                            className={`relative w-10 h-10 shadow-hard flex items-center justify-center transition-all
+                            className={`relative w-12 h-10 shadow-hard flex items-center justify-center transition-all
                                 ${cooldowns.has(n.id) || n.interaction_count === 0
-                                ? 'bevel-3d-inset bg-[#d8d8d8] opacity-50' 
+                                ? 'bevel-3d-inset bg-[#d8d8d8] opacity-50 cursor-not-allowed' 
                                 : 'control-90s active:translate-x-0.5 active:translate-y-0.5 active:shadow-none'}`}
                         >
-                            <span className="text-[20px] pixel-glyph-gray-archive">🐾</span>
-                            {/* ヒントとしてのカウント（無機質に） */}
+                            <span className="text-[22px] pixel-glyph-gray-archive">🐾</span>
+                            
+                            {/* 通知ドット：数字ではなく「気配がある」という記号のみ */}
                             {n.interaction_count > 0 && !cooldowns.has(n.id) && (
-                                <span className="absolute -top-2 -right-2 bg-red-600 text-white text-[8px] px-1 font-bold shadow-sm">!</span>
+                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-[#000080] shadow-sm"></div>
                             )}
 
-                            {/* 足跡アニメーション */}
                             <div className="absolute top-0 left-0 w-full h-0 pointer-events-none z-50">
                                 {floatingTracks.filter(t => t.nodeId === n.id).map(t => (
                                 <div key={t.id} className="absolute animate-tracks-path flex items-center justify-center" style={{ left: `${t.x}%`, animationDelay: `${t.delay}s` }}>
-                                    <span className="text-[20px] pixel-glyph-gray-archive" style={{ color: t.color }}>🐾</span>
+                                    <span className="text-[22px] pixel-glyph-gray-archive" style={{ color: t.color }}>🐾</span>
                                 </div>
                                 ))}
                             </div>
@@ -207,16 +202,13 @@ export default function Room139Fog90s() {
              </div>
           </div>
         ) : (
-          /* --- FEED: 各画像に🐱ボタンのみ --- */
           <div className="flex flex-col items-center space-y-24 mt-8">
             {nodes.map((node) => (
               <div key={node.id} className="relative w-full flex flex-col items-center">
                 <div className={`relative w-full max-w-[320px] aspect-square ${shakingIds.has(node.id) ? 'animate-subtle-shake' : ''}`}>
-                  <div className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard control-90s rounded-[2px]">
-                    <img src={node.image_url} className="w-full h-full object-cover rounded-[2px]" style={{ imageRendering: 'pixelated' }} />
+                  <div className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard control-90s">
+                    <img src={node.image_url} className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                   </div>
-                  
-                  {/* FEEDは🐱ボタンのみ */}
                   <div className="absolute -bottom-12 left-0 z-40">
                     <button 
                       onClick={() => handleAddTrack(node.id)} 
@@ -236,7 +228,7 @@ export default function Room139Fog90s() {
 
       <footer className="shrink-0 z-50 h-24 bg-[#c0c0c0] bevel-3d-inset shadow-[0_-4px_0_#000000] flex items-center justify-around p-2">
         <button onClick={() => setViewMode('FEED')} className={`w-20 h-10 control-90s shadow-hard font-bold text-[10px] ${viewMode === 'FEED' ? 'bevel-3d-inset' : ''}`}>FEED</button>
-        <label className="w-24 h-10 control-90s shadow-hard flex items-center justify-center cursor-pointer active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
+        <label className="w-24 h-10 control-90s shadow-hard flex items-center justify-center cursor-pointer">
           <span className="text-[12px] font-bold text-[#000080] tracking-tighter">＋ picture</span>
           <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
         </label>
