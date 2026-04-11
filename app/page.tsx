@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-const STORAGE_KEY = 'room139_fog_emoji_silhouette_v1';
+const STORAGE_KEY = 'room139_fog_cat_swing_v1';
 
 type Node = {
   id: string;
@@ -11,7 +11,6 @@ type Node = {
   interaction_count: number;
 };
 
-// [共通] ドットシルエットアイコン
 const PixelUserIcon = () => (
     <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
         <rect x="11" y="7" width="10" height="10" fill="#000080" fillOpacity="0.8"/>
@@ -24,6 +23,8 @@ export default function Room139Fog90s() {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [shakingIds, setShakingIds] = useState<Set<string>>(new Set());
+  // 🐱ボタン自体の揺れ（スイング）を管理するState
+  const [swingingButtons, setSwingingButtons] = useState<Set<string>>(new Set());
   const [floatingTracks, setFloatingTracks] = useState<{ id: number, nodeId: string, x: number, delay: number, color: string }[]>([]);
   const [cooldowns, setCooldowns] = useState<Set<string>>(new Set());
 
@@ -39,26 +40,28 @@ export default function Room139Fog90s() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newNodes));
   };
 
-  // --- [1] 🐱のシルエットを押す（痕跡を貯める） ---
+  // --- [1] 🐱ボタン押下：ボタン自体のスイング ＋ 画像の揺れ ---
   const handleAddTrack = (nodeId: string) => {
     const updatedNodes = nodes.map(n => 
       n.id === nodeId ? { ...n, interaction_count: (n.interaction_count || 0) + 1 } : n
     );
     saveToLocal(updatedNodes);
 
-    // 画像を少し揺らす（接触検知）
+    // 1. 画像全体の微細な揺れ
     setShakingIds(prev => new Set(prev).add(nodeId));
-    setTimeout(() => setShakingIds(prev => {
-      const next = new Set(prev);
-      next.delete(nodeId);
-      return next;
-    }), 400);
+    // 2. 🐱ボタン自体の左右5度スイング
+    setSwingingButtons(prev => new Set(prev).add(nodeId));
+
+    // アニメーション時間（0.3s）に合わせてリセット
+    setTimeout(() => {
+      setShakingIds(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
+      setSwingingButtons(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
+    }, 300);
   };
 
-  // --- [2] 足跡ボタン（痕跡を浮かび上がらせる） ---
+  // --- [2] 🐾ボタン押下：足跡の解放 ---
   const handleTriggerTracks = (nodeId: string, count: number) => {
     if (cooldowns.has(nodeId)) return;
-
     setCooldowns(prev => new Set(prev).add(nodeId));
 
     const releaseCount = count > 0 ? Math.min(count, 35) : 1;
@@ -74,13 +77,8 @@ export default function Room139Fog90s() {
 
     setFloatingTracks(prev => [...prev.slice(-200), ...newTracks]);
 
-    // 3秒クールダウン
     setTimeout(() => {
-      setCooldowns(prev => {
-        const next = new Set(prev);
-        next.delete(nodeId);
-        return next;
-      });
+      setCooldowns(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
     }, 3000);
 
     setTimeout(() => {
@@ -88,7 +86,6 @@ export default function Room139Fog90s() {
       setFloatingTracks(prev => prev.filter(t => !ids.has(t.id)));
     }, 2800);
 
-    // 放出したのでリセット
     const resetNodes = nodes.map(n => n.id === nodeId ? { ...n, interaction_count: 0 } : n);
     saveToLocal(resetNodes);
   };
@@ -116,17 +113,23 @@ export default function Room139Fog90s() {
       <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet" />
       
       <style jsx global>{`
-        * { font-family: 'DotGothic16', sans-serif !important; -webkit-font-smoothing: sans-serif !important; }
-        svg { image-rendering: pixelated; }
+        * { font-family: 'DotGothic16', sans-serif !important; -webkit-font-smoothing: none !important; }
+        
+        /* 左右5度のスイングリズム */
+        @keyframes catSwing {
+          0% { transform: rotate(0deg); }
+          25% { transform: rotate(-5deg); }
+          75% { transform: rotate(5deg); }
+          100% { transform: rotate(0deg); }
+        }
+        .animate-cat-swing { animation: catSwing 0.25s ease-in-out; }
 
-        /* 現代のカラフルな🐱を完全な黒いシルエットにする魔法のCSS */
         .pixel-glyph-black-silhouette {
-          filter: brightness(0) contrast(1.5); /* 色を完全に殺し、真っ黒なシルエットにする */
-          image-rendering: pixelated; /* パキパキ感を出す */
-          opacity: 0.9; /* わずかに鼠色のボタンと馴染ませる */
+          filter: brightness(0) contrast(1.5);
+          image-rendering: pixelated;
+          opacity: 0.9;
         }
 
-        /* 解放されたグレーの足跡（🐾）用のフィルター */
         .pixel-glyph-gray-archive {
           filter: grayscale(100%) brightness(0.4) contrast(1.2);
           image-rendering: pixelated;
@@ -135,14 +138,14 @@ export default function Room139Fog90s() {
 
         @keyframes rhythmShake {
           0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.015); }
+          50% { transform: scale(1.01); }
         }
         @keyframes tracksPath {
           0% { transform: translateY(0) scale(0.6); opacity: 0; }
           20% { opacity: 0.8; }
           100% { transform: translateY(-420px) scale(2.0); opacity: 0; }
         }
-        .animate-subtle-shake { animation: rhythmShake 0.4s ease-in-out 1; }
+        .animate-subtle-shake { animation: rhythmShake 0.3s ease-in-out 1; }
         .animate-tracks-path { animation: tracksPath 2.3s forwards ease-out; }
         
         .bevel-3d { box-shadow: inset 1px 1px 0 white, inset -1px -1px 0 #808080; }
@@ -185,16 +188,16 @@ export default function Room139Fog90s() {
                   </div>
                   
                   <div className="absolute -bottom-12 left-0 flex space-x-2 z-40">
-                    {/* [🐱シルエットボタン] 完全鼠色のボタンに、真っ黒な絵文字の影 */}
+                    {/* [🐱シルエットボタン] 左右5度揺れるロジック追加 */}
                     <button 
                       onClick={() => handleAddTrack(node.id)} 
-                      className="w-12 h-12 control-90s shadow-hard flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all"
+                      className={`w-12 h-12 control-90s shadow-hard flex items-center justify-center transition-transform
+                        ${swingingButtons.has(node.id) ? 'animate-cat-swing' : ''}`}
                     >
-                      {/* ここを🐱絵文字の黒いシルエットに変更 */}
                       <span className="text-[26px] pixel-glyph-black-silhouette">🐱</span>
                     </button>
                     
-                    {/* [足跡ボタン] 3秒クールダウン・完全鼠色のボタン */}
+                    {/* [🐾ボタン] */}
                     <button 
                       onClick={() => handleTriggerTracks(node.id, node.interaction_count || 0)} 
                       disabled={cooldowns.has(node.id)}
@@ -203,10 +206,7 @@ export default function Room139Fog90s() {
                           ? 'bevel-3d-inset bg-[#d8d8d8] translate-x-0.5 translate-y-0.5 shadow-none' 
                           : 'control-90s active:translate-x-0.5 active:translate-y-0.5 active:shadow-none'}`}
                     >
-                      {/* 足跡（🐾）はグレー化して使用 */}
                       <span className={`text-[24px] pixel-glyph-gray-archive ${cooldowns.has(node.id) ? 'opacity-20' : ''}`}>🐾</span>
-
-                      {/* 浮遊する足跡（痕跡のアーカイブ） */}
                       <div className="absolute top-0 left-0 w-full h-0 pointer-events-none z-30">
                         {floatingTracks.filter(t => t.nodeId === node.id).map(t => (
                           <div key={t.id} className="absolute animate-tracks-path flex items-center justify-center" style={{ left: `${t.x}%`, animationDelay: `${t.delay}s` }}>
@@ -216,14 +216,13 @@ export default function Room139Fog90s() {
                       </div>
                     </button>
                     
-                    {/* クールダウン中の沈黙（....） */}
                     {cooldowns.has(node.id) && (
                       <div className="flex items-center">
                          <span className="text-[10px] text-black/40 font-bold ml-2 tracking-[0.3em] animate-pulse">....</span>
                       </div>
                     )}
                   </div>
-                  <button onClick={() => saveToLocal(nodes.filter(n => n.id !== node.id))} className="absolute -top-1 -right-1 w-6 h-6 control-90s flex items-center justify-center text-[10px] font-bold">✕</button>
+                  <button onClick={() => saveToLocal(nodes.filter(n => n.id !== node.id))} className="absolute -top-1 -right-1 w-6 h-6 control-90s flex items-center justify-center text-[10px] font-bold active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all">✕</button>
                 </div>
               </div>
             ))}
@@ -231,7 +230,6 @@ export default function Room139Fog90s() {
         )}
       </main>
 
-      {/* フッター維持 */}
       <footer className="shrink-0 z-50 h-24 bg-[#c0c0c0] bevel-3d-inset shadow-[0_-4px_0_#000000] flex items-center justify-around p-2">
         <button onClick={() => setViewMode('FEED')} className={`w-20 h-10 control-90s shadow-hard font-bold text-[10px] ${viewMode === 'FEED' ? 'bevel-3d-inset' : ''}`}>FEED</button>
         <label className="w-24 h-10 control-90s shadow-hard flex items-center justify-center cursor-pointer active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
