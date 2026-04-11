@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-const STORAGE_KEY = 'room139_fog_amphibian_v1';
+const STORAGE_KEY = 'room139_fog_tracks_v1';
 
 type Node = {
   id: string;
@@ -11,30 +11,7 @@ type Node = {
   interaction_count: number;
 };
 
-// --- [自作] 90sビットマップ風：カエルと霧（SVG） ---
-
-// [●ボタン用] 座っているカエル（無関心）
-// 小さくてパキッとした、昔のレトロゲームに登場しそうなカエル。モノクロ。
-const PixelFrogIcon = () => (
-  <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
-    <rect x="9" y="10" width="8" height="12" fill="black" fillOpacity="0.7"/> {/* 体 */}
-    <rect x="7" y="12" width="2" height="6" fill="black" fillOpacity="0.7"/> {/* 足 */}
-    <rect x="17" y="12" width="2" height="6" fill="black" fillOpacity="0.7"/> {/* 足 */}
-    <rect x="10" y="8" width="2" height="2" fill="black" fillOpacity="0.7"/> {/* 目 */}
-    <rect x="14" y="8" width="2" height="2" fill="black" fillOpacity="0.7"/> {/* 目 */}
-  </svg>
-);
-
-// [浮かび上がる用] 霧の断片（ぼやけたドット）
-const PixelFogParticle = ({ color }: { color: string }) => (
-  <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
-    <rect x="8" y="12" width="16" height="8" fill={color}/>
-    <rect x="10" y="10" width="12" height="12" fill={color}/>
-    <rect x="14" y="8" width="4" height="16" fill={color}/>
-  </svg>
-);
-
-// [マイページ用] ドット風シルエットアイコン
+// --- [自作] 90sビットマップ風：ユーザーアイコン（SVG） ---
 const PixelUserIcon = () => (
     <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
         <rect x="11" y="7" width="10" height="10" fill="#000080" fillOpacity="0.8"/> {/* 頭 */}
@@ -47,9 +24,8 @@ export default function Room139Fog90s() {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [shakingIds, setShakingIds] = useState<Set<string>>(new Set());
-  // 浮かぶ霧を管理
-  const [floatingFog, setFloatingFog] = useState<{ id: number, nodeId: string, x: number, delay: number, color: string }[]>([]);
-  const [cooldowns, setCooldowns] = useState<Set<string>>(new Set());
+  // 浮かぶ足跡を管理
+  const [floatingTracks, setFloatingTracks] = useState<{ id: number, nodeId: string, x: number, y: number, delay: number, color: string }[]>([]);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -63,57 +39,48 @@ export default function Room139Fog90s() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newNodes));
   };
 
-  // --- [1] カエルを押す（目に見えない湿気/FOGの素を溜める） ---
-  const handleAddVapor = (nodeId: string) => {
+  // --- [1] 猫を押す（数値は見えないが、痕跡が溜まる） ---
+  const handleAddTrackCount = (nodeId: string) => {
     const updatedNodes = nodes.map(n => 
       n.id === nodeId ? { ...n, interaction_count: (n.interaction_count || 0) + 1 } : n
     );
     saveToLocal(updatedNodes);
 
-    // わずかに画像が揺れる（カエルに触れた感触）
+    // 存在確認として少しだけ画像を揺らす
     setShakingIds(prev => new Set(prev).add(nodeId));
     setTimeout(() => setShakingIds(prev => {
       const next = new Set(prev);
       next.delete(nodeId);
       return next;
-    }), 500);
+    }), 400);
   };
 
-  // --- [2] FOGボタン（溜まった湿気を霧として解放する） ---
-  const handleTriggerFog = (nodeId: string, count: number) => {
-    if (cooldowns.has(nodeId)) return;
+  // --- [2] 足跡ボタン（溜まった痕跡をペタペタと浮かび上がらせる） ---
+  const handleShowTracks = (nodeId: string, count: number) => {
+    // 溜まっていなくても1つは出す
+    const releaseCount = count > 0 ? Math.min(count, 30) : 1;
 
-    setCooldowns(prev => new Set(prev).add(nodeId));
-
-    // 霧の色（白、薄グレイ、濃グレイ）
+    // 足跡の色（モノクロのグラデーション）
     const colors = ['#ffffffdd', '#c0c0c0cc', '#808080aa'];
-    const releaseCount = count > 0 ? Math.min(count, 45) : 1;
 
-    const newFog = Array.from({ length: releaseCount }).map((_, i) => ({
+    const newTracks = Array.from({ length: releaseCount }).map((_, i) => ({
       id: Math.random(),
       nodeId: nodeId,
-      x: Math.random() * 80 + 10,
-      delay: i * 0.08,
+      x: (i * 12) % 80 + 10, // ペタペタと横に並ぶように
+      y: 0,
+      delay: i * 0.15, // 時間差でペタ、ペタと出す
       color: colors[i % colors.length],
     }));
 
-    setFloatingFog(prev => [...prev.slice(-250), ...newFog]);
+    setFloatingTracks(prev => [...prev.slice(-200), ...newTracks]);
 
-    // 3秒間の沈黙
+    // アニメーション終了後に要素を削除
     setTimeout(() => {
-      setCooldowns(prev => {
-        const next = new Set(prev);
-        next.delete(nodeId);
-        return next;
-      });
-    }, 3000);
+      const ids = new Set(newTracks.map(t => t.id));
+      setFloatingTracks(prev => prev.filter(t => !ids.has(t.id)));
+    }, 2500);
 
-    setTimeout(() => {
-      const ids = new Set(newFog.map(f => f.id));
-      setFloatingFog(prev => prev.filter(f => !ids.has(f.id)));
-    }, 3000);
-
-    // 放出したのでリセット
+    // 解放したのでカウントをリセット（出し切った痕跡）
     const resetNodes = nodes.map(n => n.id === nodeId ? { ...n, interaction_count: 0 } : n);
     saveToLocal(resetNodes);
   };
@@ -143,21 +110,28 @@ export default function Room139Fog90s() {
       <style jsx global>{`
         * { font-family: 'DotGothic16', sans-serif !important; -webkit-font-smoothing: none !important; }
         
-        /* 自作SVG画像もパキパキに表示 */
-        svg { image-rendering: pixelated; }
+        /* 現代のカラフルな絵文字を90年代のモノクロビットマップ風に強制変換する魔法のCSS */
+        .pixel-glyph {
+          filter: grayscale(100%) brightness(0.2) contrast(1.5);
+          image-rendering: pixelated; /* スマホブラウザでの補完をオフ */
+          transform-origin: center;
+        }
 
         @keyframes rhythmShake {
           0%, 100% { transform: rotate(0deg); }
           50% { transform: rotate(1deg); }
         }
-        /* 霧：上方向へ拡大しながら昇っていく */
-        @keyframes fogFloat {
-          0% { transform: translateY(0) scale(0.5); opacity: 0; }
+        
+        /* 足跡：ボタンの内部から斜め上へペタペタと昇っていく */
+        @keyframes tracksFloat {
+          0% { transform: translate(-20px, 0) scale(0.6) rotate(-10deg); opacity: 0; }
           20% { opacity: 1; }
-          100% { transform: translateY(-450px) scale(3.0); opacity: 0; }
+          50% { transform: translate(10px, -120px) scale(1.4) rotate(10deg); }
+          100% { transform: translate(30px, -350px) scale(0.4) rotate(-20deg); opacity: 0; }
         }
+
         .animate-slow-shake { animation: rhythmShake 0.4s ease-in-out 1; }
-        .animate-fog-float { animation: fogFloat 2.5s forwards ease-out; }
+        .animate-tracks-float { animation: tracksFloat 1.8s forwards ease-out; }
         
         .bevel-3d { box-shadow: inset 1px 1px 0 white, inset -1px -1px 0 #808080; }
         .bevel-3d-inset { box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 white; }
@@ -166,15 +140,13 @@ export default function Room139Fog90s() {
         .win-titlebar { @apply bg-[#000080] text-white font-bold flex items-center px-2; }
       `}</style>
 
-      {/* ヘッダー維持 */}
       <header className="shrink-0 z-50 h-8 win-titlebar m-1 shadow-hard">
         <h1 className="text-[12px] uppercase tracking-tighter">room139.fog</h1>
       </header>
 
-      {/* メインエリア */}
       <main className="flex-1 overflow-y-auto p-4 space-y-24 pb-48">
         {viewMode === 'MY_PAGE' ? (
-          /* --- マイページ（維持） --- */
+          /* --- マイページ --- */
           <div className="w-full max-w-[400px] mx-auto space-y-6 pt-4">
              <div className="control-90s p-4 shadow-hard flex flex-col items-center">
                 <div className="w-20 h-20 bevel-3d-inset p-1 bg-white mb-2">
@@ -198,37 +170,42 @@ export default function Room139Fog90s() {
             {nodes.map((node) => (
               <div key={node.id} className="relative w-full flex flex-col items-center">
                 <div className={`relative w-full max-w-[320px] aspect-square ${shakingIds.has(node.id) ? 'animate-slow-shake' : ''}`}>
-                  <div className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard control-90s">
-                    <img src={node.image_url} className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+                  <div className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard control-90s rounded-[2px]">
+                    <img src={node.image_url} className="w-full h-full object-cover rounded-[2px]" alt="" style={{ imageRendering: 'pixelated' }} />
                   </div>
                   
                   {/* ボタンエリア */}
                   <div className="absolute -bottom-12 left-0 flex space-x-2 z-40">
-                    {/* [自作カエルボタン] 数値なし、媚びない座り姿 */}
+                    {/* [猫ボタン] 痕跡を貯める：モノクロ変換 */}
                     <button 
-                      onClick={() => handleAddVapor(node.id)} 
+                      onClick={() => handleAddTrackCount(node.id)} 
                       className="w-12 h-12 control-90s shadow-hard flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all"
                     >
-                      <PixelFrogIcon />
+                      <span className="text-[24px] pixel-glyph">🐱</span>
                     </button>
                     
-                    {/* [FOGボタン] 解放 */}
+                    {/* [足跡ボタン] 解放：モノクロ変換 */}
                     <button 
-                      onClick={() => handleTriggerFog(node.id, node.interaction_count || 0)} 
-                      disabled={cooldowns.has(node.id)}
-                      className={`relative px-10 h-12 shadow-hard font-bold text-[14px] uppercase tracking-[0.4em] transition-all
-                        ${cooldowns.has(node.id) 
-                          ? 'bevel-3d-inset bg-[#d0d0d0] text-gray-500 translate-x-0.5 translate-y-0.5 shadow-none' 
-                          : 'control-90s active:translate-x-0.5 active:translate-y-0.5 active:shadow-none'}`}
+                      onClick={() => handleShowTracks(node.id, node.interaction_count || 0)} 
+                      className="relative w-12 h-12 control-90s shadow-hard flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all"
                     >
-                      {cooldowns.has(node.id) ? '....' : 'Fog'}
+                      <span className="text-[24px] pixel-glyph">🐾</span>
 
-                      {/* 霧のアニメーション：ボタンの内部から浮かび上がる */}
+                      {/* 足跡アニメーション：ボタンの内部からペタペタ浮かび上がる */}
                       <div className="absolute top-0 left-0 w-full h-0 pointer-events-none z-30">
-                        {floatingFog.filter(f => f.nodeId === node.id).map(f => (
-                          <div key={f.id} className="absolute animate-fog-float flex items-center justify-center" style={{ left: `${f.x}%`, animationDelay: `${f.delay}s` }}>
-                            {/* モノクロの霧のシルエット */}
-                            <PixelFogParticle color={f.color} />
+                        {floatingTracks.filter(t => t.nodeId === node.id).map(t => (
+                          <div 
+                            key={t.id} 
+                            className="absolute animate-tracks-float flex items-center justify-center" 
+                            style={{ 
+                              left: `${t.x}%`, 
+                              animationDelay: `${t.delay}s`,
+                            }} 
+                          >
+                            {/* 浮かび上がる足跡：モノクロ変換、少し透過 */}
+                            <span className="text-[22px] pixel-glyph blur-[0.5px]" style={{ color: t.color }}>
+                              🐾
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -238,12 +215,11 @@ export default function Room139Fog90s() {
                 </div>
               </div>
             ))}
-            {/* ... (NO FOG DATA維持) ... */}
+            {nodes.length === 0 && <p className="text-[12px] text-black/50 tracking-widest mt-20 uppercase font-bold">No Fog Data</p>}
           </div>
         )}
       </main>
 
-      {/* フッター維持 */}
       <footer className="shrink-0 z-50 h-24 bg-[#c0c0c0] bevel-3d-inset shadow-[0_-4px_0_#000000] flex items-center justify-around p-2">
         <button onClick={() => setViewMode('FEED')} className={`w-20 h-10 control-90s shadow-hard font-bold text-[10px] ${viewMode === 'FEED' ? 'bevel-3d-inset' : ''}`}>FEED</button>
         <label className="w-24 h-10 control-90s shadow-hard flex items-center justify-center cursor-pointer active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
