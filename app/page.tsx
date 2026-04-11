@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-const STORAGE_KEY = 'room139_fog_tracks_v1';
+const STORAGE_KEY = 'room139_fog_gray_tracks_v1';
 
 type Node = {
   id: string;
@@ -11,11 +11,10 @@ type Node = {
   interaction_count: number;
 };
 
-// --- [自作] 90sビットマップ風：ユーザーアイコン（SVG） ---
 const PixelUserIcon = () => (
     <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
-        <rect x="11" y="7" width="10" height="10" fill="#000080" fillOpacity="0.8"/> {/* 頭 */}
-        <rect x="7" y="17" width="18" height="8" fill="#000080" fillOpacity="0.8"/> {/* 体 */}
+        <rect x="11" y="7" width="10" height="10" fill="#000080" fillOpacity="0.8"/>
+        <rect x="7" y="17" width="18" height="8" fill="#000080" fillOpacity="0.8"/>
     </svg>
 );
 
@@ -24,8 +23,9 @@ export default function Room139Fog90s() {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [shakingIds, setShakingIds] = useState<Set<string>>(new Set());
-  // 浮かぶ足跡を管理
-  const [floatingTracks, setFloatingTracks] = useState<{ id: number, nodeId: string, x: number, y: number, delay: number, color: string }[]>([]);
+  const [floatingTracks, setFloatingTracks] = useState<{ id: number, nodeId: string, x: number, delay: number, color: string }[]>([]);
+  // クールダウン管理
+  const [cooldowns, setCooldowns] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -39,14 +39,12 @@ export default function Room139Fog90s() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newNodes));
   };
 
-  // --- [1] 猫を押す（数値は見えないが、痕跡が溜まる） ---
-  const handleAddTrackCount = (nodeId: string) => {
+  const handleAddTrack = (nodeId: string) => {
     const updatedNodes = nodes.map(n => 
       n.id === nodeId ? { ...n, interaction_count: (n.interaction_count || 0) + 1 } : n
     );
     saveToLocal(updatedNodes);
 
-    // 存在確認として少しだけ画像を揺らす
     setShakingIds(prev => new Set(prev).add(nodeId));
     setTimeout(() => setShakingIds(prev => {
       const next = new Set(prev);
@@ -55,32 +53,41 @@ export default function Room139Fog90s() {
     }), 400);
   };
 
-  // --- [2] 足跡ボタン（溜まった痕跡をペタペタと浮かび上がらせる） ---
-  const handleShowTracks = (nodeId: string, count: number) => {
-    // 溜まっていなくても1つは出す
-    const releaseCount = count > 0 ? Math.min(count, 30) : 1;
+  const handleTriggerTracks = (nodeId: string, count: number) => {
+    // クールダウン中なら拒絶
+    if (cooldowns.has(nodeId)) return;
 
-    // 足跡の色（モノクロのグラデーション）
-    const colors = ['#ffffffdd', '#c0c0c0cc', '#808080aa'];
+    // クールダウン開始
+    setCooldowns(prev => new Set(prev).add(nodeId));
+
+    const releaseCount = count > 0 ? Math.min(count, 35) : 1;
+    const colors = ['#ffffffcc', '#c0c0c0aa', '#80808088'];
 
     const newTracks = Array.from({ length: releaseCount }).map((_, i) => ({
       id: Math.random(),
       nodeId: nodeId,
-      x: (i * 12) % 80 + 10, // ペタペタと横に並ぶように
-      y: 0,
-      delay: i * 0.15, // 時間差でペタ、ペタと出す
+      x: (i * 15) % 85 + 5,
+      delay: i * 0.12,
       color: colors[i % colors.length],
     }));
 
     setFloatingTracks(prev => [...prev.slice(-200), ...newTracks]);
 
-    // アニメーション終了後に要素を削除
+    // 3秒後にクールダウン解除
+    setTimeout(() => {
+      setCooldowns(prev => {
+        const next = new Set(prev);
+        next.delete(nodeId);
+        return next;
+      });
+    }, 3000);
+
     setTimeout(() => {
       const ids = new Set(newTracks.map(t => t.id));
       setFloatingTracks(prev => prev.filter(t => !ids.has(t.id)));
-    }, 2500);
+    }, 2800);
 
-    // 解放したのでカウントをリセット（出し切った痕跡）
+    // 痕跡をリセット
     const resetNodes = nodes.map(n => n.id === nodeId ? { ...n, interaction_count: 0 } : n);
     saveToLocal(resetNodes);
   };
@@ -110,28 +117,26 @@ export default function Room139Fog90s() {
       <style jsx global>{`
         * { font-family: 'DotGothic16', sans-serif !important; -webkit-font-smoothing: none !important; }
         
-        /* 現代のカラフルな絵文字を90年代のモノクロビットマップ風に強制変換する魔法のCSS */
-        .pixel-glyph {
-          filter: grayscale(100%) brightness(0.2) contrast(1.5);
-          image-rendering: pixelated; /* スマホブラウザでの補完をオフ */
-          transform-origin: center;
+        /* 絵文字をボタンのグレーに馴染ませるためのフィルター */
+        .pixel-glyph-gray {
+          filter: grayscale(100%) brightness(0.4) contrast(1.2);
+          image-rendering: pixelated;
+          opacity: 0.8;
         }
 
         @keyframes rhythmShake {
-          0%, 100% { transform: rotate(0deg); }
-          50% { transform: rotate(1deg); }
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.02); }
         }
         
-        /* 足跡：ボタンの内部から斜め上へペタペタと昇っていく */
-        @keyframes tracksFloat {
-          0% { transform: translate(-20px, 0) scale(0.6) rotate(-10deg); opacity: 0; }
-          20% { opacity: 1; }
-          50% { transform: translate(10px, -120px) scale(1.4) rotate(10deg); }
-          100% { transform: translate(30px, -350px) scale(0.4) rotate(-20deg); opacity: 0; }
+        @keyframes tracksPath {
+          0% { transform: translateY(0) scale(0.6); opacity: 0; }
+          20% { opacity: 0.8; }
+          100% { transform: translateY(-400px) scale(1.8); opacity: 0; }
         }
 
-        .animate-slow-shake { animation: rhythmShake 0.4s ease-in-out 1; }
-        .animate-tracks-float { animation: tracksFloat 1.8s forwards ease-out; }
+        .animate-subtle-shake { animation: rhythmShake 0.4s ease-in-out 1; }
+        .animate-tracks-path { animation: tracksPath 2.2s forwards ease-out; }
         
         .bevel-3d { box-shadow: inset 1px 1px 0 white, inset -1px -1px 0 #808080; }
         .bevel-3d-inset { box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 white; }
@@ -146,12 +151,11 @@ export default function Room139Fog90s() {
 
       <main className="flex-1 overflow-y-auto p-4 space-y-24 pb-48">
         {viewMode === 'MY_PAGE' ? (
-          /* --- マイページ --- */
           <div className="w-full max-w-[400px] mx-auto space-y-6 pt-4">
              <div className="control-90s p-4 shadow-hard flex flex-col items-center">
                 <div className="w-20 h-20 bevel-3d-inset p-1 bg-white mb-2">
                    <div className="w-full h-full bg-[#c0c0c0] flex items-center justify-center">
-                       <PixelUserIcon /> {/* 自作アイコン */}
+                       <PixelUserIcon />
                    </div>
                 </div>
                 <h2 className="text-[16px] text-[#000080] font-bold uppercase tracking-widest">kurata.fog</h2>
@@ -159,63 +163,65 @@ export default function Room139Fog90s() {
              <div className="grid grid-cols-2 gap-4">
                 {nodes.map(n => (
                   <div key={n.id} className="control-90s p-1 shadow-hard aspect-square">
-                    <img src={n.image_url} className="w-full h-full object-covergrayscale grayscale opacity-40" style={{ imageRendering: 'pixelated' }} />
+                    <img src={n.image_url} className="w-full h-full object-cover grayscale opacity-30" style={{ imageRendering: 'pixelated' }} />
                   </div>
                 ))}
              </div>
           </div>
         ) : (
-          /* --- フィード --- */
           <div className="flex flex-col items-center space-y-24">
             {nodes.map((node) => (
               <div key={node.id} className="relative w-full flex flex-col items-center">
-                <div className={`relative w-full max-w-[320px] aspect-square ${shakingIds.has(node.id) ? 'animate-slow-shake' : ''}`}>
-                  <div className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard control-90s rounded-[2px]">
-                    <img src={node.image_url} className="w-full h-full object-cover rounded-[2px]" alt="" style={{ imageRendering: 'pixelated' }} />
+                <div className={`relative w-full max-w-[320px] aspect-square ${shakingIds.has(node.id) ? 'animate-subtle-shake' : ''}`}>
+                  <div className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard control-90s">
+                    <img src={node.image_url} className="w-full h-full object-cover" alt="" style={{ imageRendering: 'pixelated' }} />
                   </div>
                   
-                  {/* ボタンエリア */}
                   <div className="absolute -bottom-12 left-0 flex space-x-2 z-40">
-                    {/* [猫ボタン] 痕跡を貯める：モノクロ変換 */}
+                    {/* [猫ボタン] グレーの沈黙 */}
                     <button 
-                      onClick={() => handleAddTrackCount(node.id)} 
-                      className="w-12 h-12 control-90s shadow-hard flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all"
+                      onClick={() => handleAddTrack(node.id)} 
+                      className="w-12 h-12 control-90s shadow-hard flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
                     >
-                      <span className="text-[24px] pixel-glyph">🐱</span>
+                      <span className="text-[22px] pixel-glyph-gray">🐱</span>
                     </button>
                     
-                    {/* [足跡ボタン] 解放：モノクロ変換 */}
+                    {/* [足跡ボタン] 3秒クールダウン・グレーの痕跡 */}
                     <button 
-                      onClick={() => handleShowTracks(node.id, node.interaction_count || 0)} 
-                      className="relative w-12 h-12 control-90s shadow-hard flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all"
+                      onClick={() => handleTriggerTracks(node.id, node.interaction_count || 0)} 
+                      disabled={cooldowns.has(node.id)}
+                      className={`relative w-12 h-12 shadow-hard flex items-center justify-center transition-all
+                        ${cooldowns.has(node.id) 
+                          ? 'bevel-3d-inset bg-[#d0d0d0] translate-x-0.5 translate-y-0.5 shadow-none' 
+                          : 'control-90s active:translate-x-0.5 active:translate-y-0.5 active:shadow-none'}`}
                     >
-                      <span className="text-[24px] pixel-glyph">🐾</span>
+                      <span className={`text-[22px] pixel-glyph-gray ${cooldowns.has(node.id) ? 'opacity-20' : ''}`}>🐾</span>
 
-                      {/* 足跡アニメーション：ボタンの内部からペタペタ浮かび上がる */}
+                      {/* 浮遊する足跡 */}
                       <div className="absolute top-0 left-0 w-full h-0 pointer-events-none z-30">
                         {floatingTracks.filter(t => t.nodeId === node.id).map(t => (
                           <div 
                             key={t.id} 
-                            className="absolute animate-tracks-float flex items-center justify-center" 
-                            style={{ 
-                              left: `${t.x}%`, 
-                              animationDelay: `${t.delay}s`,
-                            }} 
+                            className="absolute animate-tracks-path flex items-center justify-center" 
+                            style={{ left: `${t.x}%`, animationDelay: `${t.delay}s` }} 
                           >
-                            {/* 浮かび上がる足跡：モノクロ変換、少し透過 */}
-                            <span className="text-[22px] pixel-glyph blur-[0.5px]" style={{ color: t.color }}>
-                              🐾
-                            </span>
+                            <span className="text-[20px] pixel-glyph-gray" style={{ color: t.color }}>🐾</span>
                           </div>
                         ))}
                       </div>
                     </button>
+                    
+                    {/* クールダウン中のテキスト表示（オプション：より無機質にするなら....） */}
+                    {cooldowns.has(node.id) && (
+                      <div className="flex items-center">
+                         <span className="text-[10px] text-black/40 font-bold ml-2 tracking-widest animate-pulse">....</span>
+                      </div>
+                    )}
                   </div>
-                  <button onClick={() => saveToLocal(nodes.filter(n => n.id !== node.id))} className="absolute -top-1 -right-1 w-6 h-6 control-90s flex items-center justify-center text-[10px] font-bold active:translate-x-0.5 active:translate-y-0.5active:shadow-none transition-all">✕</button>
+                  <button onClick={() => saveToLocal(nodes.filter(n => n.id !== node.id))} className="absolute -top-1 -right-1 w-6 h-6 control-90s flex items-center justify-center text-[10px] font-bold">✕</button>
                 </div>
               </div>
             ))}
-            {nodes.length === 0 && <p className="text-[12px] text-black/50 tracking-widest mt-20 uppercase font-bold">No Fog Data</p>}
           </div>
         )}
       </main>
