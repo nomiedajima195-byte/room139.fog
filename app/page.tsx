@@ -2,98 +2,124 @@
 
 import React, { useState, useEffect } from 'react';
 
-// ... (STORAGE_KEY, Node型, ViewMode型は維持)
+const STORAGE_KEY = 'room139_fog_v3_mohu';
 
-// --- 猫嫌いのためのドット絵資産 (90s ASCII Art / Glyph 風) ---
+type Node = {
+  id: string;
+  image_url: string;
+  created_at: string;
+  interaction_count: number;
+};
 
-// ●ボタン用の「猫の顔（ビットマップ風）」
-// 小さくてパキッとした、昔のフォントに含まれてそうな猫。
-const PixelCatFace = () => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
-    <rect x="3" y="5" width="2" height="2" fill="black" fillOpacity="0.7"/> {/* 耳 */}
-    <rect x="15" y="5" width="2" height="2" fill="black" fillOpacity="0.7"/> {/* 耳 */}
-    <rect x="5" y="7" width="10" height="8" fill="black" fillOpacity="0.7"/> {/* 顔 */}
-    <rect x="7" y="9" width="2" height="2" fill="#b19cd9"/> {/* 目 */}
-    <rect x="11" y="9" width="2" height="2" fill="#b19cd9"/> {/* 目 */}
-    <rect x="9" y="11" width="2" height="2" fill="#ffb6c1"/> {/* 鼻 */}
-  </svg>
-);
+type ViewMode = 'FEED' | 'MY_PAGE';
 
-// モフられた時に浮かぶ「ドット猫（泡の代わり）」
-// 少し大きく、色が薄紫の背景に溶けるような、霧の中の猫。
-const PixelCatFloat = ({ color }: { color: string }) => (
-  <svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
-    <rect x="6" y="8" width="3" height="3" fill={color}/> {/* 耳 */}
-    <rect x="21" y="8" width="3" height="3" fill={color}/> {/* 耳 */}
-    <rect x="9" y="11" width="12" height="10" fill={color}/> {/* 顔 */}
-    <rect x="11" y="14" width="2" height="2" fill="black" fillOpacity="0.3"/> {/* 目 */}
-    <rect x="17" y="14" width="2" height="2" fill="black" fillOpacity="0.3"/> {/* 目 */}
-    <rect x="14" y="17" width="2" height="2" fill="#ffb6c1" fillOpacity="0.8"/> {/* 鼻 */}
-    <rect x="11" y="19" width="8" height="1" fill="black" fillOpacity="0.3"/> {/* 口 */}
+// ●ボタン用の「すり寄る直前の猫の後ろ姿」
+const PixelCatBack = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
+    <rect x="8" y="10" width="8" height="10" fill="black" fillOpacity="0.6"/>
+    <rect x="9" y="8" width="2" height="2" fill="black" fillOpacity="0.6"/>
+    <rect x="13" y="8" width="2" height="2" fill="black" fillOpacity="0.6"/>
+    <rect x="16" y="12" width="2" height="6" fill="black" fillOpacity="0.6"/>
   </svg>
 );
 
 export default function Room139Fog90s() {
+  // --- 状態管理 ---
+  const [viewMode, setViewMode] = useState<ViewMode>('FEED');
   const [nodes, setNodes] = useState<Node[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [shakingIds, setShakingIds] = useState<Set<string>>(new Set());
-  // 泡の代わりに猫を管理（データ構造は同じでOK）
-  const [floatingCats, setFloatingCats] = useState<{ id: number, nodeId: string, x: number, color: string }[]>([]);
+  const [tailParticles, setTailParticles] = useState<{ id: number, nodeId: string, x: number, delay: number, color: string }[]>([]);
   
-  // ... (useEffect, saveToLocal, handleFileChange, deleteNode, ユーザー情報は維持)
+  const [user] = useState({
+    name: 'kurata.fog',
+    icon: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+  });
 
-  // --- ●ボタン（猫の気配：揺れ） ---
-  const handleInteraction = (nodeId: string) => {
-    const updatedNodes = nodes.map(n => n.id === nodeId ? { ...n, interaction_count: n.interaction_count + 1 } : n);
-    saveToLocal(updatedNodes);
-    setShakingIds(prev => new Set(prev).add(nodeId));
-    setTimeout(() => {
-      setShakingIds(prev => {
-        const next = new Set(prev);
-        next.delete(nodeId);
-        return next;
-      });
-    }, 2000);
+  // --- ライフサイクル・保存 ---
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try { setNodes(JSON.parse(saved)); } catch (e) { console.error(e); }
+    }
+  }, []);
+
+  const saveToLocal = (newNodes: Node[]) => {
+    setNodes(newNodes);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newNodes));
   };
 
-  // --- MOHUボタン（霧の中の猫：浮かび上がる） ---
-  const handleShowFloatingCats = (nodeId: string, count: number) => {
-    // 霧っぽい、淡い色に変更（薄紫、水色、白）
-    const colors = ['#f830f833', '#00e0ff33', '#ffffff44'];
-    
-    // 1回のモフで出る猫の数を制限しつつ生成
-    const newCats = Array.from({ length: Math.min(count + 1, 15) }).map(() => ({
+  // --- アクション ---
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || isUploading) return;
+    setIsUploading(true);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const newNode: Node = {
+        id: `node-${Date.now()}`,
+        image_url: event.target?.result as string,
+        created_at: new Date().toISOString(),
+        interaction_count: 0,
+      };
+      saveToLocal([newNode, ...nodes]);
+      setIsUploading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleMOHU = (nodeId: string, count: number) => {
+    // 尻尾が脚をなでていく時の「毛」の粒子
+    const colors = ['#ffffff', '#00000044', '#b19cd9', '#c0c0c0'];
+    const newParticles = Array.from({ length: Math.min(count + 5, 25) }).map((_, i) => ({
       id: Math.random(),
       nodeId: nodeId,
-      x: Math.random() * 60 + 20, // ボタン付近
+      x: (i * 8) % 100,
+      delay: i * 0.06,
       color: colors[Math.floor(Math.random() * colors.length)],
     }));
 
-    setFloatingCats(prev => [...prev.slice(-100), ...newCats]);
+    setTailParticles(prev => [...prev.slice(-150), ...newParticles]);
+    
+    // 画像を少し揺らす
+    setShakingIds(prev => new Set(prev).add(nodeId));
+    setTimeout(() => setShakingIds(prev => { const n = new Set(prev); n.delete(nodeId); return n; }), 2000);
 
     setTimeout(() => {
-      const ids = new Set(newCats.map(c => c.id));
-      setFloatingCats(prev => prev.filter(c => !ids.has(c.id)));
-    }, 2500);
+      const ids = new Set(newParticles.map(p => p.id));
+      setTailParticles(prev => prev.filter(p => !ids.has(p.id)));
+    }, 2000);
+  };
+
+  const deleteNode = (id: string) => {
+    if (confirm("このノードを霧に返しますか？")) {
+      saveToLocal(nodes.filter(n => n.id !== id));
+    }
   };
 
   return (
     <div className="h-[100dvh] w-full relative overflow-hidden flex flex-col bg-[#b19cd9]">
-      {/* ... (link, * スタイル、タイトルバー維持) ... */}
+      <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet" />
       
       <style jsx global>{`
-        /* ... (既存のスタイル維持) ... */
+        * {
+          font-family: 'DotGothic16', sans-serif !important;
+          -webkit-font-smoothing: none !important;
+          text-rendering: pixelated !important;
+        }
         @keyframes rhythmShake {
           0%, 100% { transform: rotate(0deg); }
-          50% { transform: rotate(2deg); }
+          50% { transform: rotate(1.5deg); }
         }
-        /* 猫：ボタンの位置から霧の中を浮かんでいく */
-        @keyframes catFloatFromButton {
-          0% { transform: translateY(0) scale(0.6); opacity: 0; }
-          10% { opacity: 1; }
-          100% { transform: translateY(-380px) scale(2.2); opacity: 0; }
+        @keyframes tailSwipe {
+          0% { transform: translate(-30px, 0) scale(1); opacity: 0; }
+          20% { opacity: 0.8; }
+          50% { transform: translate(20px, -120px) scale(1.6); }
+          100% { transform: translate(60px, -300px) scale(0.4); opacity: 0; }
         }
         .animate-slow-shake { animation: rhythmShake 2s ease-in-out 1; }
-        .animate-cat-float { animation: catFloatFromButton 2.5s forwards ease-out; }
+        .animate-tail-swipe { animation: tailSwipe 1.5s forwards ease-out; }
         
         .bevel-3d { box-shadow: inset 1px 1px 0 white, inset -1px -1px 0 #808080; }
         .bevel-3d-inset { box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 white; }
@@ -102,12 +128,25 @@ export default function Room139Fog90s() {
         .win-titlebar { @apply bg-[#000080] text-white font-bold flex items-center justify-between px-2; }
       `}</style>
 
-      {/* ヘッダー維持 */}
+      {/* ヘッダー */}
+      <header className="shrink-0 z-50 h-8 win-titlebar m-1 shadow-hard">
+        <div className="flex items-center space-x-2">
+          <div className="w-3 h-3 border border-white/50 bg-white/20" />
+          <h1 className="text-[12px] tracking-tighter uppercase cursor-pointer" onClick={() => setViewMode('FEED')}>
+            room139.fog {viewMode === 'MY_PAGE' && ' - PROFILE'}
+          </h1>
+        </div>
+        <div className="flex space-x-1">
+          <div className="w-4 h-4 control-90s flex items-center justify-center text-[10px]">_</div>
+          <div className="w-4 h-4 control-90s flex items-center justify-center text-[10px]">✕</div>
+        </div>
+      </header>
 
       {/* メインエリア */}
       <main className="flex-1 overflow-y-auto p-4 space-y-20 pb-40">
+        
         {viewMode === 'MY_PAGE' ? (
-          /* --- マイページ（維持） --- */
+          /* --- マイページ --- */
           <div className="w-full max-w-[400px] mx-auto space-y-6">
             <div className="control-90s p-4 shadow-hard flex flex-col items-center">
               <div className="w-20 h-20 bevel-3d-inset p-1 bg-white mb-4">
@@ -118,7 +157,13 @@ export default function Room139Fog90s() {
                 CHECK
               </button>
             </div>
-            {/* ... (過去の画像並び維持) ... */}
+            <div className="grid grid-cols-2 gap-4">
+              {nodes.map((node) => (
+                <div key={node.id} className="control-90s p-1 shadow-hard aspect-square">
+                  <img src={node.image_url} className="w-full h-full object-cover opacity-60" style={{ imageRendering: 'pixelated' }} />
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           /* --- フィード --- */
@@ -132,45 +177,60 @@ export default function Room139Fog90s() {
                   
                   {/* ボタンエリア */}
                   <div className="absolute -bottom-12 left-0 flex space-x-2 z-40">
-                    {/* ●ボタン（猫の気配） */}
-                    <button onClick={() => handleInteraction(node.id)} className="w-12 h-12 control-90s shadow-hard flex items-center justify-center transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-none">
-                      <PixelCatFace /> {/* ここを猫の顔に変更 */}
+                    <button 
+                      onClick={() => handleMOHU(node.id, node.interaction_count)} 
+                      className="w-12 h-12 control-90s shadow-hard flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
+                    >
+                      <PixelCatBack />
                     </button>
                     
-                    {/* MOHUボタン（霧の中の猫：浮かび上がる） */}
                     <button 
-                      onClick={() => handleShowFloatingCats(node.id, node.interaction_count)} 
-                      className="relative px-6 h-12 control-90s shadow-hard font-bold text-[14px] tracking-widest active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
+                      onClick={() => handleMOHU(node.id, node.interaction_count)} 
+                      className="relative px-6 h-12 control-90s shadow-hard font-bold text-[14px] tracking-[0.2em] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
                     >
-                      MOHU {/* テキストを変更 */}
-                      
-                      {/* 猫レイヤー：ボタンの内部から溢れ出す */}
+                      MOHU
                       <div className="absolute top-0 left-0 w-full h-0 pointer-events-none">
-                        {floatingCats.filter(c => c.nodeId === node.id).map(c => (
+                        {tailParticles.filter(p => p.nodeId === node.id).map(p => (
                           <div 
-                            key={c.id} 
-                            className="absolute animate-cat-float w-6 h-6 rounded-full mix-blend-screen" 
+                            key={p.id} 
+                            className="absolute animate-tail-swipe w-2 h-6" 
                             style={{ 
-                              left: `${c.x}%`, 
-                              animationDelay: `${Math.random() * 0.2}s` 
+                              left: `${p.x}%`, 
+                              backgroundColor: p.color,
+                              animationDelay: `${p.delay}s`,
+                              clipPath: 'polygon(50% 0%, 100% 100%, 0% 100%)' 
                             }} 
-                          >
-                            <PixelCatFloat color={c.color} /> {/* ここをドット猫に変更 */}
-                          </div>
+                          />
                         ))}
                       </div>
                     </button>
                   </div>
-                  {/* ... (deleteNodeボタン維持) ... */}
+                  <button onClick={() => deleteNode(node.id)} className="absolute top-2 right-2 w-6 h-6 control-90s flex items-center justify-center text-[12px] font-bold">✕</button>
                 </div>
               </div>
             ))}
-            {/* ... (NO FOG DATA維持) ... */}
+            {nodes.length === 0 && <p className="text-[12px] text-black/50 tracking-widest mt-20 uppercase">No Fog Data</p>}
           </div>
         )}
       </main>
 
-      {/* ... (フッター、ローディング維持) ... */}
+      {/* フッター */}
+      <footer className="shrink-0 z-50 h-28 bg-[#c0c0c0] bevel-3d-inset shadow-[0_-4px_0_#000000] flex items-center justify-around p-2">
+        <button onClick={() => setViewMode('FEED')} className={`w-16 h-12 control-90s shadow-hard font-bold text-[10px] ${viewMode === 'FEED' ? 'bevel-3d-inset bg-[#e0e0e0]' : ''}`}>FEED</button>
+        <label className="w-32 h-12 control-90s shadow-hard flex items-center justify-center cursor-pointer active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
+          <span className="text-[14px] font-bold text-[#000080] tracking-tighter">＋ picture</span>
+          <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+        </label>
+        <button onClick={() => setViewMode('MY_PAGE')} className={`w-16 h-12 control-90s shadow-hard font-bold text-[10px] ${viewMode === 'MY_PAGE' ? 'bevel-3d-inset bg-[#e0e0e0]' : ''}`}>MY_PAGE</button>
+      </footer>
+
+      {isUploading && (
+        <div className="fixed inset-0 bg-white/20 backdrop-blur-sm z-[100] flex items-center justify-center">
+          <div className="bg-[#c0c0c0] p-4 shadow-hard control-90s">
+            <p className="text-[10px] tracking-[0.2em] text-[#000080] animate-pulse font-bold">INHALING PICTURE...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
