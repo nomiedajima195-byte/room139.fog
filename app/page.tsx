@@ -1,146 +1,160 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { createClient } from '@supabase/supabase-js';
 
-const STORAGE_KEY = 'room139_fog_silent_tracks_v1';
+// --- Supabase Config (134の情報を流用) ---
+const supabaseUrl = 'https://pfxwhcgdbavycddapqmz.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmeHdoY2dkYmF2eWNkZGFwcW16Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcxNjQ0NzUsImV4cCI6MjA4Mjc0MDQ3NX0.YNQlbyocg2olS6-1WxTnbr5N2z52XcVIpI1XR-XrDtM';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 type Node = {
   id: string;
   image_url: string;
+  user_id: string;
+  user_name: string;
   created_at: string;
   interaction_count: number;
 };
 
-const PixelUserIcon = () => (
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: 'pixelated' }}>
-        <rect x="11" y="7" width="10" height="10" fill="#000080" fillOpacity="0.8"/>
-        <rect x="7" y="17" width="18" height="8" fill="#000080" fillOpacity="0.8"/>
-    </svg>
-);
-
-export default function Room139Fog90s() {
+export default function RubbishFog() {
   const [viewMode, setViewMode] = useState<'FEED' | 'MY_PAGE'>('FEED');
   const [nodes, setNodes] = useState<Node[]>([]);
+  const [myId, setMyId] = useState<string | null>(null);
+  const [myName, setMyName] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
+  
+  // アニメーション用State
   const [shakingIds, setShakingIds] = useState<Set<string>>(new Set());
   const [swingingButtons, setSwingingButtons] = useState<Set<string>>(new Set());
   const [floatingTracks, setFloatingTracks] = useState<{ id: number, nodeId: string, x: number, delay: number, color: string }[]>([]);
   const [cooldowns, setCooldowns] = useState<Set<string>>(new Set());
 
+  // --- [A] アカウント初期化 (Local) ---
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try { setNodes(JSON.parse(saved)); } catch (e) { console.error(e); }
+    const savedId = localStorage.getItem('rubbish_user_id');
+    const savedName = localStorage.getItem('rubbish_user_name');
+    if (savedId) {
+      setMyId(savedId);
+      setMyName(savedName || 'anonymous');
     }
   }, []);
 
-  const saveToLocal = (newNodes: Node[]) => {
-    setNodes(newNodes);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newNodes));
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newId = `user-${Date.now()}`;
+    localStorage.setItem('rubbish_user_id', newId);
+    localStorage.setItem('rubbish_user_name', myName);
+    setMyId(newId);
   };
 
-  const handleAddTrack = (nodeId: string) => {
-    const updatedNodes = nodes.map(n => 
-      n.id === nodeId ? { ...n, interaction_count: (n.interaction_count || 0) + 1 } : n
-    );
-    saveToLocal(updatedNodes);
+  // --- [B] データ取得 (168時間ルール適用) ---
+  const fetchData = useCallback(async () => {
+    const sevenDaysAgo = new Date(Date.now() - 168 * 60 * 60 * 1000).toISOString();
+    
+    const { data, error } = await supabase
+      .from('rubbish_nodes')
+      .select('*')
+      .gt('created_at', sevenDaysAgo) // 168時間以内に限定
+      .order('created_at', { ascending: false });
 
+    if (data) setNodes(data);
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // --- [C] アクション: 🐱ボタン (他人のNodeを揺らす) ---
+  const handleAddTrack = async (nodeId: string) => {
     setShakingIds(prev => new Set(prev).add(nodeId));
     setSwingingButtons(prev => new Set(prev).add(nodeId));
+
+    // DB更新 (RPCでインクリメント)
+    await supabase.rpc('increment_interaction', { row_id: nodeId });
 
     setTimeout(() => {
       setShakingIds(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
       setSwingingButtons(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
+      fetchData(); // カウント更新を反映
     }, 300);
   };
 
-  const handleTriggerTracks = (nodeId: string, count: number) => {
+  // --- [D] アクション: 🐾ボタン (自分のNodeを解放) ---
+  const handleTriggerTracks = async (nodeId: string, count: number) => {
     if (cooldowns.has(nodeId) || count === 0) return;
     setCooldowns(prev => new Set(prev).add(nodeId));
 
-    // 数値は出さないが、カウント数に応じて放出量を決定（最大50）
     const releaseCount = Math.min(count, 50);
     const colors = ['#ffffffcc', '#c0c0c0aa', '#80808088'];
-
     const newTracks = Array.from({ length: releaseCount }).map((_, i) => ({
-      id: Math.random(),
-      nodeId: nodeId,
-      x: Math.random() * 70 + 15,
-      delay: i * 0.1,
-      color: colors[i % colors.length],
+      id: Math.random(), nodeId, x: Math.random() * 70 + 15, delay: i * 0.1, color: colors[i % colors.length],
     }));
 
     setFloatingTracks(prev => [...prev.slice(-300), ...newTracks]);
 
+    // DBリセット
+    await supabase.rpc('reset_interaction', { row_id: nodeId });
+
     setTimeout(() => {
       setCooldowns(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
+      fetchData();
     }, 3500);
 
     setTimeout(() => {
       const ids = new Set(newTracks.map(t => t.id));
       setFloatingTracks(prev => prev.filter(t => !ids.has(t.id)));
     }, 3500);
-
-    const resetNodes = nodes.map(n => n.id === nodeId ? { ...n, interaction_count: 0 } : n);
-    saveToLocal(resetNodes);
   };
 
+  // --- [E] 写真アップロード ---
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || isUploading) return;
+    if (!file || !myId || isUploading) return;
     setIsUploading(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const newNode: Node = {
-        id: `node-${Date.now()}`,
-        image_url: event.target?.result as string,
-        created_at: new Date().toISOString(),
-        interaction_count: 0,
-      };
-      saveToLocal([newNode, ...nodes]);
-      setIsUploading(false);
-    };
-    reader.readAsDataURL(file);
+
+    const fileName = `${myId}/${Date.now()}-${file.name}`;
+    const { data: uploadData } = await supabase.storage.from('images').upload(fileName, file);
+
+    if (uploadData) {
+      const url = supabase.storage.from('images').getPublicUrl(fileName).data.publicUrl;
+      await supabase.from('rubbish_nodes').insert([{
+        image_url: url,
+        user_id: myId,
+        user_name: myName,
+      }]);
+      fetchData();
+    }
+    setIsUploading(false);
   };
+
+  // ログイン画面
+  if (!myId) {
+    return (
+      <div className="h-[100dvh] bg-[#c0c0c0] flex items-center justify-center font-['DotGothic16']">
+        <div className="w-72 bg-[#c0c0c0] p-1 border-2 border-white shadow-hard bevel-3d">
+          <div className="bg-[#000080] text-white px-2 py-1 text-[12px] font-bold">Rubbish - Welcome</div>
+          <form onSubmit={handleRegister} className="p-4 space-y-4">
+            <p className="text-[10px] leading-relaxed">部屋に入る前に、<br/>名前（気配）を決めてください。</p>
+            <input required maxLength={12} value={myName} onChange={e => setMyName(e.target.value)} placeholder="NAME..." className="w-full bg-white border-2 border-[#808080] p-2 outline-none text-[14px]" />
+            <button type="submit" className="w-full bg-[#c0c0c0] border-2 border-white bevel-3d p-2 text-[12px] font-bold active:bevel-3d-inset">ENTER</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[100dvh] w-full relative overflow-hidden flex flex-col bg-[#b19cd9]">
       <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet" />
-      
       <style jsx global>{`
         * { font-family: 'DotGothic16', sans-serif !important; -webkit-font-smoothing: none !important; }
-        
-        @keyframes catSwing {
-          0% { transform: rotate(0deg); }
-          25% { transform: rotate(-5deg); }
-          75% { transform: rotate(5deg); }
-          100% { transform: rotate(0deg); }
-        }
+        @keyframes catSwing { 0% { transform: rotate(0deg); } 25% { transform: rotate(-5deg); } 75% { transform: rotate(5deg); } 100% { transform: rotate(0deg); } }
         .animate-cat-swing { animation: catSwing 0.25s ease-in-out; }
-
-        .pixel-glyph-black-silhouette {
-          filter: brightness(0) contrast(1.5);
-          image-rendering: pixelated;
-        }
-
-        .pixel-glyph-gray-archive {
-          filter: grayscale(100%) brightness(0.4) contrast(1.2);
-          image-rendering: pixelated;
-          opacity: 0.8;
-        }
-
-        @keyframes rhythmShake {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.01); }
-        }
-        @keyframes tracksPath {
-          0% { transform: translateY(0) scale(0.4); opacity: 0; }
-          10% { opacity: 0.8; }
-          100% { transform: translateY(-380px) scale(2.8); opacity: 0; }
-        }
+        .pixel-glyph-black-silhouette { filter: brightness(0) contrast(1.5); image-rendering: pixelated; }
+        .pixel-glyph-gray-archive { filter: grayscale(100%) brightness(0.4) contrast(1.2); image-rendering: pixelated; opacity: 0.8; }
+        @keyframes rhythmShake { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.01); } }
+        @keyframes tracksPath { 0% { transform: translateY(0) scale(0.4); opacity: 0; } 10% { opacity: 0.8; } 100% { transform: translateY(-380px) scale(2.8); opacity: 0; } }
         .animate-subtle-shake { animation: rhythmShake 0.3s ease-in-out 1; }
         .animate-tracks-path { animation: tracksPath 2.8s forwards ease-out; }
-        
         .bevel-3d { box-shadow: inset 1px 1px 0 white, inset -1px -1px 0 #808080; }
         .bevel-3d-inset { box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 white; }
         .shadow-hard { box-shadow: 4px 4px 0 #000000; }
@@ -149,48 +163,34 @@ export default function Room139Fog90s() {
       `}</style>
 
       <header className="shrink-0 z-50 h-8 win-titlebar m-1 shadow-hard">
-        <h1 className="text-[12px] uppercase tracking-tighter">room139.fog</h1>
+        <h1 className="text-[12px] uppercase tracking-[0.5em] font-black">Rubbish</h1>
       </header>
 
       <main className="flex-1 overflow-y-auto p-4 pb-48">
         {viewMode === 'MY_PAGE' ? (
+          /* --- MY_PAGE --- */
           <div className="w-full max-w-[500px] mx-auto space-y-8 pt-4">
              <div className="control-90s p-4 shadow-hard flex flex-col items-center">
-                <div className="w-16 h-16 bevel-3d-inset p-1 bg-white mb-2">
-                   <div className="w-full h-full bg-[#c0c0c0] flex items-center justify-center">
-                       <PixelUserIcon />
-                   </div>
+                <div className="w-16 h-16 bevel-3d-inset p-1 bg-white mb-2 flex items-center justify-center">
+                   <div className="w-10 h-10 bg-[#000080] opacity-20" style={{ clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)' }} />
                 </div>
-                <h2 className="text-[14px] text-[#000080] font-bold uppercase tracking-widest">kurata.fog</h2>
+                <h2 className="text-[14px] text-[#000080] font-bold uppercase tracking-widest">{myName}.fog</h2>
+                <p className="text-[8px] opacity-40 mt-1">ID: {myId?.substring(0,8)}</p>
              </div>
 
-             <div className="grid grid-cols-2 gap-x-4 gap-y-16"> {/* 縦の間隔を広げてボタンを配置しやすく */}
-                {nodes.map(n => (
+             <div className="grid grid-cols-2 gap-x-4 gap-y-16">
+                {nodes.filter(n => n.user_id === myId).map(n => (
                   <div key={n.id} className="relative flex flex-col items-center mb-4">
                     <div className="w-full aspect-square control-90s p-1 shadow-hard">
                       <img src={n.image_url} className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                     </div>
-
-                    {/* マイページ：🐾ボタンを画像からさらに下に配置 */}
                     <div className="mt-4 w-full flex justify-center">
-                        <button 
-                            onClick={() => handleTriggerTracks(n.id, n.interaction_count || 0)} 
-                            disabled={cooldowns.has(n.id) || n.interaction_count === 0}
-                            className={`relative w-12 h-10 shadow-hard flex items-center justify-center transition-all
-                                ${cooldowns.has(n.id) || n.interaction_count === 0
-                                ? 'bevel-3d-inset bg-[#d8d8d8] opacity-50 cursor-not-allowed' 
-                                : 'control-90s active:translate-x-0.5 active:translate-y-0.5 active:shadow-none'}`}
-                        >
+                        <button onClick={() => handleTriggerTracks(n.id, n.interaction_count)} disabled={cooldowns.has(n.id) || n.interaction_count === 0} className={`relative w-12 h-10 shadow-hard flex items-center justify-center transition-all ${cooldowns.has(n.id) || n.interaction_count === 0 ? 'bevel-3d-inset bg-[#d8d8d8] opacity-50' : 'control-90s'}`}>
                             <span className="text-[22px] pixel-glyph-gray-archive">🐾</span>
-                            
-                            {/* 通知ドット：数字ではなく「気配がある」という記号のみ */}
-                            {n.interaction_count > 0 && !cooldowns.has(n.id) && (
-                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-[#000080] shadow-sm"></div>
-                            )}
-
+                            {n.interaction_count > 0 && !cooldowns.has(n.id) && <div className="absolute -top-1 -right-1 w-2 h-2 bg-[#000080] shadow-sm"></div>}
                             <div className="absolute top-0 left-0 w-full h-0 pointer-events-none z-50">
                                 {floatingTracks.filter(t => t.nodeId === n.id).map(t => (
-                                <div key={t.id} className="absolute animate-tracks-path flex items-center justify-center" style={{ left: `${t.x}%`, animationDelay: `${t.delay}s` }}>
+                                <div key={t.id} className="absolute animate-tracks-path" style={{ left: `${t.x}%`, animationDelay: `${t.delay}s` }}>
                                     <span className="text-[22px] pixel-glyph-gray-archive" style={{ color: t.color }}>🐾</span>
                                 </div>
                                 ))}
@@ -202,23 +202,22 @@ export default function Room139Fog90s() {
              </div>
           </div>
         ) : (
+          /* --- FEED --- */
           <div className="flex flex-col items-center space-y-24 mt-8">
             {nodes.map((node) => (
               <div key={node.id} className="relative w-full flex flex-col items-center">
                 <div className={`relative w-full max-w-[320px] aspect-square ${shakingIds.has(node.id) ? 'animate-subtle-shake' : ''}`}>
                   <div className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard control-90s">
-                    <img src={node.image_url} className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+                    <img src={node.image_url} className="w-full h-full object-cover grayscale opacity-80" style={{ imageRendering: 'pixelated' }} />
                   </div>
+                  {/* 投稿者の名前（うっすら） */}
+                  <div className="absolute -top-6 left-1 text-[9px] font-bold text-black/40 uppercase tracking-widest">{node.user_name}</div>
+                  
                   <div className="absolute -bottom-12 left-0 z-40">
-                    <button 
-                      onClick={() => handleAddTrack(node.id)} 
-                      className={`w-12 h-12 control-90s shadow-hard flex items-center justify-center transition-transform
-                        ${swingingButtons.has(node.id) ? 'animate-cat-swing' : ''}`}
-                    >
+                    <button onClick={() => handleAddTrack(node.id)} className={`w-12 h-12 control-90s shadow-hard flex items-center justify-center transition-transform ${swingingButtons.has(node.id) ? 'animate-cat-swing' : ''}`}>
                       <span className="text-[26px] pixel-glyph-black-silhouette">🐱</span>
                     </button>
                   </div>
-                  <button onClick={() => saveToLocal(nodes.filter(n => n.id !== node.id))} className="absolute -top-1 -right-1 w-6 h-6 control-90s flex items-center justify-center text-[10px] font-bold">✕</button>
                 </div>
               </div>
             ))}
@@ -228,8 +227,8 @@ export default function Room139Fog90s() {
 
       <footer className="shrink-0 z-50 h-24 bg-[#c0c0c0] bevel-3d-inset shadow-[0_-4px_0_#000000] flex items-center justify-around p-2">
         <button onClick={() => setViewMode('FEED')} className={`w-20 h-10 control-90s shadow-hard font-bold text-[10px] ${viewMode === 'FEED' ? 'bevel-3d-inset' : ''}`}>FEED</button>
-        <label className="w-24 h-10 control-90s shadow-hard flex items-center justify-center cursor-pointer">
-          <span className="text-[12px] font-bold text-[#000080] tracking-tighter">＋ picture</span>
+        <label className="w-24 h-10 control-90s shadow-hard flex items-center justify-center cursor-pointer active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
+          <span className="text-[12px] font-bold text-[#000080] tracking-tighter">＋ upload</span>
           <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
         </label>
         <button onClick={() => setViewMode('MY_PAGE')} className={`w-20 h-10 control-90s shadow-hard font-bold text-[10px] ${viewMode === 'MY_PAGE' ? 'bevel-3d-inset' : ''}`}>MY_PAGE</button>
