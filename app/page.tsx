@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// --- Supabase Config (134の情報を流用) ---
+// --- Supabase Config ---
+// （※すでに設定済みのURLとキーをそのままお使いください）
 const supabaseUrl = 'https://pfxwhcgdbavycddapqmz.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmeHdoY2dkYmF2eWNkZGFwcW16Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcxNjQ0NzUsImV4cCI6MjA4Mjc0MDQ3NX0.YNQlbyocg2olS6-1WxTnbr5N2z52XcVIpI1XR-XrDtM';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -17,7 +18,7 @@ type Node = {
   interaction_count: number;
 };
 
-export default function RubbishFog() {
+export default function Room139Fog() {
   const [viewMode, setViewMode] = useState<'FEED' | 'MY_PAGE'>('FEED');
   const [nodes, setNodes] = useState<Node[]>([]);
   const [myId, setMyId] = useState<string | null>(null);
@@ -51,11 +52,10 @@ export default function RubbishFog() {
   // --- [B] データ取得 (168時間ルール適用) ---
   const fetchData = useCallback(async () => {
     const sevenDaysAgo = new Date(Date.now() - 168 * 60 * 60 * 1000).toISOString();
-    
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('rubbish_nodes')
       .select('*')
-      .gt('created_at', sevenDaysAgo) // 168時間以内に限定
+      .gt('created_at', sevenDaysAgo)
       .order('created_at', { ascending: false });
 
     if (data) setNodes(data);
@@ -64,17 +64,19 @@ export default function RubbishFog() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   // --- [C] アクション: 🐱ボタン (他人のNodeを揺らす) ---
-  const handleAddTrack = async (nodeId: string) => {
-    setShakingIds(prev => new Set(prev).add(nodeId));
-    setSwingingButtons(prev => new Set(prev).add(nodeId));
+  const handleAddTrack = async (node: Node) => {
+    // 【ガード】自分の投稿には足跡をつけられない
+    if (node.user_id === myId) return;
 
-    // DB更新 (RPCでインクリメント)
-    await supabase.rpc('increment_interaction', { row_id: nodeId });
+    setShakingIds(prev => new Set(prev).add(node.id));
+    setSwingingButtons(prev => new Set(prev).add(node.id));
+    
+    await supabase.rpc('increment_interaction', { row_id: node.id });
 
     setTimeout(() => {
-      setShakingIds(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
-      setSwingingButtons(prev => { const n = new Set(prev); n.delete(nodeId); return n; });
-      fetchData(); // カウント更新を反映
+      setShakingIds(prev => { const n = new Set(prev); n.delete(node.id); return n; });
+      setSwingingButtons(prev => { const n = new Set(prev); n.delete(node.id); return n; });
+      fetchData();
     }, 300);
   };
 
@@ -90,8 +92,6 @@ export default function RubbishFog() {
     }));
 
     setFloatingTracks(prev => [...prev.slice(-300), ...newTracks]);
-
-    // DBリセット
     await supabase.rpc('reset_interaction', { row_id: nodeId });
 
     setTimeout(() => {
@@ -112,16 +112,40 @@ export default function RubbishFog() {
     setIsUploading(true);
 
     const fileName = `${myId}/${Date.now()}-${file.name}`;
-    const { data: uploadData } = await supabase.storage.from('images').upload(fileName, file);
+    
+    // Storageへアップロード
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('images')
+      .upload(fileName, file);
+
+    if (uploadError) {
+      console.error('Upload Error:', uploadError.message);
+      alert('アップロードに失敗しました。RLSの設定を確認してください。');
+      setIsUploading(false);
+      return;
+    }
 
     if (uploadData) {
-      const url = supabase.storage.from('images').getPublicUrl(fileName).data.publicUrl;
-      await supabase.from('rubbish_nodes').insert([{
-        image_url: url,
-        user_id: myId,
-        user_name: myName,
-      }]);
-      fetchData();
+      // URL取得
+      const { data: { publicUrl } } = supabase.storage
+        .from('images')
+        .getPublicUrl(fileName);
+
+      // DBへ保存
+      const { error: dbError } = await supabase
+        .from('rubbish_nodes')
+        .insert([{
+          image_url: publicUrl,
+          user_id: myId,
+          user_name: myName,
+        }]);
+
+      if (dbError) {
+        console.error('DB Insert Error:', dbError.message);
+        alert('データベースへの保存に失敗しました。');
+      } else {
+        fetchData(); // 成功時のみ再取得
+      }
     }
     setIsUploading(false);
   };
@@ -129,11 +153,11 @@ export default function RubbishFog() {
   // ログイン画面
   if (!myId) {
     return (
-      <div className="h-[100dvh] bg-[#c0c0c0] flex items-center justify-center font-['DotGothic16']">
-        <div className="w-72 bg-[#c0c0c0] p-1 border-2 border-white shadow-hard bevel-3d">
-          <div className="bg-[#000080] text-white px-2 py-1 text-[12px] font-bold">Rubbish - Welcome</div>
+      <div className="h-[100dvh] bg-[#c0c0c0] flex items-center justify-center font-['DotGothic16'] p-4">
+        <div className="w-full max-w-72 bg-[#c0c0c0] p-1 border-2 border-white shadow-hard bevel-3d">
+          <div className="bg-[#000080] text-white px-2 py-1 text-[12px] font-bold">room139.fog - Login</div>
           <form onSubmit={handleRegister} className="p-4 space-y-4">
-            <p className="text-[10px] leading-relaxed">部屋に入る前に、<br/>名前（気配）を決めてください。</p>
+            <p className="text-[10px] leading-relaxed">気配を登録してください。</p>
             <input required maxLength={12} value={myName} onChange={e => setMyName(e.target.value)} placeholder="NAME..." className="w-full bg-white border-2 border-[#808080] p-2 outline-none text-[14px]" />
             <button type="submit" className="w-full bg-[#c0c0c0] border-2 border-white bevel-3d p-2 text-[12px] font-bold active:bevel-3d-inset">ENTER</button>
           </form>
@@ -163,19 +187,18 @@ export default function RubbishFog() {
       `}</style>
 
       <header className="shrink-0 z-50 h-8 win-titlebar m-1 shadow-hard">
-        <h1 className="text-[12px] uppercase tracking-[0.5em] font-black">Rubbish</h1>
+        <h1 className="text-[12px] uppercase tracking-tighter">room139.fog</h1>
       </header>
 
       <main className="flex-1 overflow-y-auto p-4 pb-48">
         {viewMode === 'MY_PAGE' ? (
-          /* --- MY_PAGE --- */
           <div className="w-full max-w-[500px] mx-auto space-y-8 pt-4">
              <div className="control-90s p-4 shadow-hard flex flex-col items-center">
                 <div className="w-16 h-16 bevel-3d-inset p-1 bg-white mb-2 flex items-center justify-center">
                    <div className="w-10 h-10 bg-[#000080] opacity-20" style={{ clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)' }} />
                 </div>
                 <h2 className="text-[14px] text-[#000080] font-bold uppercase tracking-widest">{myName}.fog</h2>
-                <p className="text-[8px] opacity-40 mt-1">ID: {myId?.substring(0,8)}</p>
+                <p className="text-[8px] opacity-40 mt-1 uppercase">Node Life: 168h</p>
              </div>
 
              <div className="grid grid-cols-2 gap-x-4 gap-y-16">
@@ -185,12 +208,12 @@ export default function RubbishFog() {
                       <img src={n.image_url} className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                     </div>
                     <div className="mt-4 w-full flex justify-center">
-                        <button onClick={() => handleTriggerTracks(n.id, n.interaction_count)} disabled={cooldowns.has(n.id) || n.interaction_count === 0} className={`relative w-12 h-10 shadow-hard flex items-center justify-center transition-all ${cooldowns.has(n.id) || n.interaction_count === 0 ? 'bevel-3d-inset bg-[#d8d8d8] opacity-50' : 'control-90s'}`}>
+                        <button onClick={() => handleTriggerTracks(n.id, n.interaction_count)} disabled={cooldowns.has(n.id) || n.interaction_count === 0} className={`relative w-12 h-10 shadow-hard flex items-center justify-center transition-all ${cooldowns.has(n.id) || n.interaction_count === 0 ? 'bevel-3d-inset bg-[#d8d8d8] opacity-50 cursor-not-allowed' : 'control-90s active:translate-x-0.5 active:translate-y-0.5 active:shadow-none'}`}>
                             <span className="text-[22px] pixel-glyph-gray-archive">🐾</span>
                             {n.interaction_count > 0 && !cooldowns.has(n.id) && <div className="absolute -top-1 -right-1 w-2 h-2 bg-[#000080] shadow-sm"></div>}
                             <div className="absolute top-0 left-0 w-full h-0 pointer-events-none z-50">
                                 {floatingTracks.filter(t => t.nodeId === n.id).map(t => (
-                                <div key={t.id} className="absolute animate-tracks-path" style={{ left: `${t.x}%`, animationDelay: `${t.delay}s` }}>
+                                <div key={t.id} className="absolute animate-tracks-path flex items-center justify-center" style={{ left: `${t.x}%`, animationDelay: `${t.delay}s` }}>
                                     <span className="text-[22px] pixel-glyph-gray-archive" style={{ color: t.color }}>🐾</span>
                                 </div>
                                 ))}
@@ -202,7 +225,6 @@ export default function RubbishFog() {
              </div>
           </div>
         ) : (
-          /* --- FEED --- */
           <div className="flex flex-col items-center space-y-24 mt-8">
             {nodes.map((node) => (
               <div key={node.id} className="relative w-full flex flex-col items-center">
@@ -210,13 +232,22 @@ export default function RubbishFog() {
                   <div className="absolute inset-0 bg-[#c0c0c0] p-1 shadow-hard control-90s">
                     <img src={node.image_url} className="w-full h-full object-cover grayscale opacity-80" style={{ imageRendering: 'pixelated' }} />
                   </div>
-                  {/* 投稿者の名前（うっすら） */}
-                  <div className="absolute -top-6 left-1 text-[9px] font-bold text-black/40 uppercase tracking-widest">{node.user_name}</div>
+                  
+                  {/* 【UI変更】自分のノードかどうかで表示を分ける */}
+                  <div className="absolute -top-6 left-1 text-[9px] font-bold text-black/40 uppercase tracking-widest">
+                    {node.user_id === myId ? '[ MY NODE ]' : node.user_name}
+                  </div>
                   
                   <div className="absolute -bottom-12 left-0 z-40">
-                    <button onClick={() => handleAddTrack(node.id)} className={`w-12 h-12 control-90s shadow-hard flex items-center justify-center transition-transform ${swingingButtons.has(node.id) ? 'animate-cat-swing' : ''}`}>
-                      <span className="text-[26px] pixel-glyph-black-silhouette">🐱</span>
-                    </button>
+                    {node.user_id !== myId ? (
+                      <button onClick={() => handleAddTrack(node)} className={`w-12 h-12 control-90s shadow-hard flex items-center justify-center transition-transform ${swingingButtons.has(node.id) ? 'animate-cat-swing' : ''}`}>
+                        <span className="text-[26px] pixel-glyph-black-silhouette">🐱</span>
+                      </button>
+                    ) : (
+                      <div className="w-12 h-12 flex items-center justify-center opacity-20 pointer-events-none">
+                        <span className="text-[20px] pixel-glyph-black-silhouette">🐾</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -227,7 +258,7 @@ export default function RubbishFog() {
 
       <footer className="shrink-0 z-50 h-24 bg-[#c0c0c0] bevel-3d-inset shadow-[0_-4px_0_#000000] flex items-center justify-around p-2">
         <button onClick={() => setViewMode('FEED')} className={`w-20 h-10 control-90s shadow-hard font-bold text-[10px] ${viewMode === 'FEED' ? 'bevel-3d-inset' : ''}`}>FEED</button>
-        <label className="w-24 h-10 control-90s shadow-hard flex items-center justify-center cursor-pointer active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
+        <label className="w-24 h-10 control-90s shadow-hard flex items-center justify-center cursor-pointer">
           <span className="text-[12px] font-bold text-[#000080] tracking-tighter">＋ upload</span>
           <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
         </label>
